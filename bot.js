@@ -235,14 +235,9 @@ async function createCharacterFromModal(interaction) {
         );
 
         const embed = new EmbedBuilder()
-            .setColor(0x00ff00)
+            .setColor(0x729bb6)
             .setTitle('<:DO_Check:1436967853801869322> Personnage créé !')
-            .setDescription(`Le personnage **${name}** a été créé avec succès.`)
-            .addFields(
-                { name: '📝 Nom', value: name, inline: true },
-                { name: '🔑 Prefix', value: `\`${prefix}\``, inline: true }
-            )
-            .setFooter({ text: `Utilisez ${prefix} au début de vos messages pour parler en tant que ${name}` })
+            .setDescription(`Le personnage **${name}** a été créé avec succès.\n\n> <:DO_Icone_Cle:1436971786418786395> | **Préfix** : \`${prefix}\`\n> <:DO_Icone_FicheModifier:1436970642531680306> | **Nom** : ${name}`)
             .setTimestamp();
 
         if (avatarUrl) {
@@ -270,20 +265,19 @@ async function showCharacterList(interaction) {
         return;
     }
 
-    const embed = new EmbedBuilder()
-        .setColor(0x0099ff)
-        .setTitle('📚 Vos personnages')
-        .setDescription(`Vous avez ${characters.length} personnage(s)`)
-        .setFooter({ text: `Total: ${characters.length} personnage(s)` })
-        .setTimestamp();
-
+    let description = `Vous avez **${characters.length}** personnage(s)\n\n`;
+    
     characters.forEach(char => {
-        embed.addFields({
-            name: `${char.name}`,
-            value: `🔑 Prefix: \`${char.prefix}\`\n📅 Créé le: ${new Date(char.created_at).toLocaleDateString('fr-FR')}`,
-            inline: true
-        });
+        description += `**${char.name}**\n`;
+        description += `> <:DO_Icone_Cle:1436971786418786395> | **Préfix** : \`${char.prefix}\`\n`;
+        description += `> <:DO_Icone_FicheModifier:1436970642531680306> | **Nom** : ${char.name}\n\n`;
     });
+
+    const embed = new EmbedBuilder()
+        .setColor(0x729bb6)
+        .setTitle('📚 Vos personnages')
+        .setDescription(description)
+        .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
 }
@@ -321,15 +315,12 @@ async function showCharacterInfo(interaction) {
         return;
     }
 
+    const description = `> <:DO_Icone_Cle:1436971786418786395> | **Préfix** : \`${character.prefix}\`\n> <:DO_Icone_FicheModifier:1436970642531680306> | **Nom** : ${character.name}\n> 📅 | **Créé le** : ${new Date(character.created_at).toLocaleDateString('fr-FR')}\n> 🔄 | **Modifié le** : ${new Date(character.updated_at).toLocaleDateString('fr-FR')}`;
+
     const embed = new EmbedBuilder()
-        .setColor(0x0099ff)
+        .setColor(0x729bb6)
         .setTitle(`📋 ${character.name}`)
-        .addFields(
-            { name: '🔑 Prefix', value: `\`${character.prefix}\``, inline: true },
-            { name: '📅 Créé le', value: new Date(character.created_at).toLocaleDateString('fr-FR'), inline: true },
-            { name: '🔄 Modifié le', value: new Date(character.updated_at).toLocaleDateString('fr-FR'), inline: true }
-        )
-        .setFooter({ text: `ID: ${character.id}` })
+        .setDescription(description)
         .setTimestamp();
 
     if (character.avatar_url) {
