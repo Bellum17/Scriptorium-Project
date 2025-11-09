@@ -157,9 +157,9 @@ async function handleCommand(interaction) {
         const errorMessage = error.message || 'Une erreur est survenue';
         
         if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: `❌ ${errorMessage}`, ephemeral: true });
+            await interaction.followUp({ content: `<:DO_Cross:1436967855273803826> ${errorMessage}`, ephemeral: true });
         } else {
-            await interaction.reply({ content: `❌ ${errorMessage}`, ephemeral: true });
+            await interaction.reply({ content: `<:DO_Cross:1436967855273803826> ${errorMessage}`, ephemeral: true });
         }
     }
 }
@@ -220,7 +220,7 @@ async function createCharacterFromModal(interaction) {
     // Validation de l'URL si fournie
     if (avatarUrl && !isValidUrl(avatarUrl)) {
         await interaction.editReply({
-            content: '❌ L\'URL de l\'avatar n\'est pas valide. Elle doit commencer par http:// ou https://'
+            content: '<:DO_Cross:1436967855273803826> L\'URL de l\'avatar n\'est pas valide. Elle doit commencer par http:// ou https://'
         });
         return;
     }
@@ -236,7 +236,7 @@ async function createCharacterFromModal(interaction) {
 
         const embed = new EmbedBuilder()
             .setColor(0x00ff00)
-            .setTitle('✅ Personnage créé !')
+            .setTitle('<:DO_Check:1436967853801869322> Personnage créé !')
             .setDescription(`Le personnage **${name}** a été créé avec succès.`)
             .addFields(
                 { name: '📝 Nom', value: name, inline: true },
@@ -252,7 +252,7 @@ async function createCharacterFromModal(interaction) {
         await interaction.editReply({ embeds: [embed] });
     } catch (error) {
         await interaction.editReply({
-            content: `❌ ${error.message}`
+            content: `<:DO_Cross:1436967855273803826> ${error.message}`
         });
     }
 }
@@ -265,7 +265,7 @@ async function showCharacterList(interaction) {
 
     if (characters.length === 0) {
         await interaction.editReply({
-            content: '📭 Vous n\'avez aucun personnage. Utilisez `/personnage créer` pour en créer un !'
+            content: '<:DO_Cross:1436967855273803826> Vous n\'avez aucun personnage. Utilisez `/personnage créer` pour en créer un !'
         });
         return;
     }
@@ -297,13 +297,13 @@ async function deleteCharacter(interaction) {
 
     if (!deleted) {
         await interaction.editReply({
-            content: `❌ Aucun personnage nommé "${name}" n'a été trouvé.`
+            content: `<:DO_Cross:1436967855273803826> Aucun personnage nommé "${name}" n'a été trouvé.`
         });
         return;
     }
 
     await interaction.editReply({
-        content: `✅ Le personnage **${name}** a été supprimé avec succès.`
+        content: `<:DO_Check:1436967853801869322> Le personnage **${name}** a été supprimé avec succès.`
     });
 }
 
@@ -316,7 +316,7 @@ async function showCharacterInfo(interaction) {
 
     if (!character) {
         await interaction.editReply({
-            content: `❌ Aucun personnage nommé "${name}" n'a été trouvé.`
+            content: `<:DO_Cross:1436967855273803826> Aucun personnage nommé "${name}" n'a été trouvé.`
         });
         return;
     }
