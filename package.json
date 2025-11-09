@@ -1,0 +1,27 @@
+{
+  "name": "scriptorium-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord Scriptorium - Optimisé pour Railway",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "railway:start": "node bot.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "geography"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
