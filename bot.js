@@ -38,7 +38,11 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildWebhooks
-    ]
+    ],
+    rest: {
+        timeout: 30000, // Augmenter le timeout à 30 secondes
+        retries: 5 // Réessayer 5 fois en cas d'échec
+    }
 });
 
 // Initialiser la base de données
@@ -345,7 +349,17 @@ client.on(Events.Error, (error) => {
 
 // Gestion de la déconnexion
 client.on(Events.Disconnect, () => {
-    console.log('⚠️ Bot déconnecté');
+    console.log('⚠️ Bot déconnecté - Reconnexion automatique par Discord.js...');
+});
+
+// Gestion de la reprise de connexion
+client.on(Events.ShardResume, (id, replayedEvents) => {
+    console.log(`✅ Connexion reprise (Shard ${id}, ${replayedEvents} événements rejoués)`);
+});
+
+// Gestion de la reconnexion
+client.on(Events.ShardReconnecting, (id) => {
+    console.log(`🔄 Reconnexion en cours (Shard ${id})...`);
 });
 
 // Gestion des messages pour le proxying
@@ -485,16 +499,36 @@ if (!process.env.DISCORD_TOKEN) {
     process.exit(1);
 }
 
-// Connexion du bot avec le token
-client.login(process.env.DISCORD_TOKEN)
-    .then(() => {
-        console.log('🚀 Tentative de connexion...');
-    })
-    .catch((error) => {
-        console.error('❌ Erreur lors de la connexion:', error);
-        console.error('🔍 Vérifiez que votre token Discord est valide');
-        process.exit(1);
-    });
+// Fonction pour se connecter avec retry
+async function connectWithRetry(maxRetries = 5, delay = 5000) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            console.log(`🚀 Tentative de connexion... (${i + 1}/${maxRetries})`);
+            await client.login(process.env.DISCORD_TOKEN);
+            console.log('✅ Connexion réussie !');
+            return;
+        } catch (error) {
+            console.error(`❌ Erreur lors de la connexion (tentative ${i + 1}/${maxRetries}):`, error.message);
+            
+            if (error.code === 'TOKEN_INVALID') {
+                console.error('🔍 Token Discord invalide. Vérifiez votre variable DISCORD_TOKEN');
+                process.exit(1);
+            }
+            
+            if (i < maxRetries - 1) {
+                console.log(`⏳ Nouvelle tentative dans ${delay / 1000} secondes...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error('❌ Impossible de se connecter après plusieurs tentatives');
+                console.error('🔍 Vérifiez votre connexion réseau et les paramètres Railway');
+                process.exit(1);
+            }
+        }
+    }
+}
+
+// Connexion du bot avec retry
+connectWithRetry();
 
 // Gestion de l'arrêt propre du bot
 process.on('SIGINT', () => {
