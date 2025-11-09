@@ -6,8 +6,6 @@
   "scripts": {
     "start": "node bot.js",
     "dev": "nodemon bot.js",
-    "build": "npm ci --omit=dev",
-    "railway:start": "node bot.js",
     "test:db": "node test-db.js"
   },
   "engines": {

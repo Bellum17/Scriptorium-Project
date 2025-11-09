@@ -1,0 +1,11 @@
+# Configuration Nixpacks pour Railway
+# https://nixpacks.com/docs/configuration/file
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --only=production"]
+
+[start]
+cmd = "npm start"
