@@ -237,8 +237,7 @@ async function createCharacterFromModal(interaction) {
         const embed = new EmbedBuilder()
             .setColor(0x729bb6)
             .setTitle('<:DO_Check:1436967853801869322> Personnage créé !')
-            .setDescription(`Le personnage **${name}** a été créé avec succès.\n\n> <:DO_Icone_Cle:1436971786418786395> | **Préfix** : \`${prefix}\`\n> <:DO_Icone_FicheModifier:1436970642531680306> | **Nom** : ${name}`)
-            .setTimestamp();
+            .setDescription(`Le personnage **${name}** a été créé avec succès.\n\n> <:DO_Icone_Cle:1436971786418786395> | **Préfix** : \`${prefix}\`\n> <:DO_Icone_FicheModifier:1436970642531680306> | **Nom** : ${name}`);
 
         if (avatarUrl) {
             embed.setThumbnail(avatarUrl);
@@ -265,7 +264,7 @@ async function showCharacterList(interaction) {
         return;
     }
 
-    let description = `Vous avez **${characters.length}** personnage(s)\n\n`;
+    let description = '';
     
     characters.forEach(char => {
         description += `**${char.name}**\n`;
@@ -275,9 +274,9 @@ async function showCharacterList(interaction) {
 
     const embed = new EmbedBuilder()
         .setColor(0x729bb6)
-        .setTitle('📚 Vos personnages')
+        .setTitle('<:DO_Icone_Liste:1436970080822099998> | Liste de vos personnages')
         .setDescription(description)
-        .setTimestamp();
+        .setFooter({ text: `Vous avez ${characters.length} personnage(s)` });
 
     await interaction.editReply({ embeds: [embed] });
 }
@@ -315,13 +314,12 @@ async function showCharacterInfo(interaction) {
         return;
     }
 
-    const description = `> <:DO_Icone_Cle:1436971786418786395> | **Préfix** : \`${character.prefix}\`\n> <:DO_Icone_FicheModifier:1436970642531680306> | **Nom** : ${character.name}\n> 📅 | **Créé le** : ${new Date(character.created_at).toLocaleDateString('fr-FR')}\n> 🔄 | **Modifié le** : ${new Date(character.updated_at).toLocaleDateString('fr-FR')}`;
+    const description = `> <:DO_Icone_Cle:1436971786418786395> | **Préfix** : \`${character.prefix}\`\n> <:DO_Icone_FicheModifier:1436970642531680306> | **Nom** : ${character.name}\n> <:DO_Icone_Calendrier:1437018266966032466> | **Créé le** : ${new Date(character.created_at).toLocaleDateString('fr-FR')}\n> <:DO_Icone_Modification:1437017821031960656> | **Modifié le** : ${new Date(character.updated_at).toLocaleDateString('fr-FR')}`;
 
     const embed = new EmbedBuilder()
         .setColor(0x729bb6)
-        .setTitle(`📋 ${character.name}`)
-        .setDescription(description)
-        .setTimestamp();
+        .setTitle(`<:DO_Icone_Fiche:1436970640878993428> | ${character.name}`)
+        .setDescription(description);
 
     if (character.avatar_url) {
         embed.setThumbnail(character.avatar_url);
