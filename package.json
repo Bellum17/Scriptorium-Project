@@ -6,7 +6,13 @@
   "scripts": {
     "start": "node bot.js",
     "dev": "nodemon bot.js",
-    "railway:start": "node bot.js"
+    "build": "npm ci --omit=dev",
+    "railway:start": "node bot.js",
+    "test:db": "node test-db.js"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   },
   "keywords": [
     "discord",
@@ -19,7 +25,8 @@
     "axios": "^1.13.2",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
