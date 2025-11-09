@@ -417,52 +417,46 @@ async function proxyMessage(message, character) {
         }
 
         // Vérifier si c'est une réponse à un message
-        let threadId = null;
-        let mentionContent = '';
+        let repliedToMessage = null;
+        let mentionUserId = null;
         
         if (message.reference) {
             try {
-                const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
+                repliedToMessage = await message.channel.messages.fetch(message.reference.messageId);
                 
                 // Si c'est une réponse à un message de webhook (personnage)
-                if (repliedMessage.webhookId) {
+                if (repliedToMessage.webhookId) {
                     // Chercher le créateur du personnage en parsant le nom du webhook
-                    const characterName = repliedMessage.author.username;
+                    const characterName = repliedToMessage.author.username;
                     
                     // Chercher dans la base de données quel utilisateur a créé ce personnage
                     const originalCharacter = await db.getCharacterByName(null, message.guildId, characterName);
                     
                     if (originalCharacter) {
-                        mentionContent = `*En réponse à <@${originalCharacter.user_id}>*`;
+                        mentionUserId = originalCharacter.user_id;
                     }
                 }
-                
-                threadId = repliedMessage.id;
             } catch (error) {
                 console.error('⚠️ Impossible de récupérer le message d\'origine:', error);
             }
         }
 
+        // Préparer le contenu avec la mention si nécessaire
+        let finalContent = content;
+        if (repliedToMessage && mentionUserId) {
+            finalContent = `*↩️ <@${mentionUserId}>*\n${content}`;
+        }
+
         // Envoyer le message via le webhook
-        const webhookMessage = await webhook.send({
-            content: content,
+        await webhook.send({
+            content: finalContent,
             username: character.name,
             avatarURL: character.avatar_url || message.author.displayAvatarURL(),
-            threadId: threadId, // Répondre au message si c'est une reply
             allowedMentions: {
                 parse: ['users', 'roles'],
                 repliedUser: true
             }
         });
-
-        // Si c'est une réponse à un personnage, envoyer la mention juste après
-        if (mentionContent) {
-            await message.channel.send({
-                content: mentionContent,
-                reply: { messageReference: webhookMessage.id, failIfNotExists: false },
-                allowedMentions: { parse: ['users'] }
-            });
-        }
 
         // Supprimer le message original
         await message.delete().catch(err => {
