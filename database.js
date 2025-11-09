@@ -86,6 +86,17 @@ class DatabaseManager {
 
     // Récupérer un personnage par son nom
     async getCharacterByName(userId, guildId, name) {
+        // Si userId est null, chercher uniquement par guild_id et name
+        if (userId === null) {
+            const result = await this.pool.query(
+                `SELECT * FROM characters 
+                 WHERE guild_id = $1 AND name = $2 
+                 LIMIT 1`,
+                [guildId, name]
+            );
+            return result.rows[0];
+        }
+        
         const result = await this.pool.query(
             `SELECT * FROM characters 
              WHERE user_id = $1 AND guild_id = $2 AND name = $3`,
