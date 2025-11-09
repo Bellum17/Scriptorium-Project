@@ -161,9 +161,9 @@ async function handleCommand(interaction) {
         const errorMessage = error.message || 'Une erreur est survenue';
         
         if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: `<:DO_Cross:1436967855273803826> ${errorMessage}`, ephemeral: true });
+            await interaction.followUp({ content: `<:DO_Cross:1436967855273803826> ${errorMessage}`, flags: MessageFlags.Ephemeral });
         } else {
-            await interaction.reply({ content: `<:DO_Cross:1436967855273803826> ${errorMessage}`, ephemeral: true });
+            await interaction.reply({ content: `<:DO_Cross:1436967855273803826> ${errorMessage}`, flags: MessageFlags.Ephemeral });
         }
     }
 }
@@ -215,7 +215,7 @@ async function handleModalSubmit(interaction) {
 
 // Créer un personnage à partir du modal
 async function createCharacterFromModal(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const name = interaction.fields.getTextInputValue('character_name');
     const prefix = interaction.fields.getTextInputValue('character_prefix');
@@ -257,7 +257,7 @@ async function createCharacterFromModal(interaction) {
 
 // Afficher la liste des personnages
 async function showCharacterList(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const characters = await db.getUserCharacters(interaction.user.id, interaction.guildId);
 
@@ -287,7 +287,7 @@ async function showCharacterList(interaction) {
 
 // Supprimer un personnage
 async function deleteCharacter(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const name = interaction.options.getString('nom');
     const deleted = await db.deleteCharacter(interaction.user.id, interaction.guildId, name);
@@ -306,7 +306,7 @@ async function deleteCharacter(interaction) {
 
 // Afficher les informations d'un personnage
 async function showCharacterInfo(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const name = interaction.options.getString('nom');
     const character = await db.getCharacterByName(interaction.user.id, interaction.guildId, name);
