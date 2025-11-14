@@ -547,13 +547,14 @@ class StatsGenerator {
             }
         });
         
-        const joinsData = stats.map(s => parseInt(s.joins));
-        const leavesData = stats.map(s => parseInt(s.leaves));
+        const joinsData = stats.map(s => parseInt(s.joins || 0));
+        const leavesData = stats.map(s => parseInt(s.leaves || 0));
+        const memberCountData = stats.map(s => parseInt(s.member_count || 0));
         
         // Calculer les totaux
         const totalJoins = joinsData.reduce((sum, count) => sum + count, 0);
         const totalLeaves = leavesData.reduce((sum, count) => sum + count, 0);
-        const netChange = totalJoins - totalLeaves;
+        const currentMembers = memberCountData[memberCountData.length - 1] || 0;
         
         // Charger l'icône si elle existe
         let iconImage = null;
@@ -624,7 +625,7 @@ class StatsGenerator {
                     title: {
                         display: false
                     },
-                    customTotal: `Arrivées: ${totalJoins.toLocaleString('fr-FR')} | Départs: ${totalLeaves.toLocaleString('fr-FR')} | Net: ${netChange >= 0 ? '+' : ''}${netChange.toLocaleString('fr-FR')}`,
+                    customTotal: `Membres actuels: ${currentMembers.toLocaleString('fr-FR')} | Arrivées: ${totalJoins.toLocaleString('fr-FR')} | Départs: ${totalLeaves.toLocaleString('fr-FR')}`,
                     customIcon: iconImage,
                     customLabels: labels
                 },

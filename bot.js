@@ -888,11 +888,12 @@ async function saveMemberCountSnapshot() {
     }
 }
 
-// Prendre un snapshot toutes les heures
-setInterval(saveMemberCountSnapshot, 60 * 60 * 1000); // Toutes les heures
+// Prendre un snapshot toutes les 10 minutes (pour avoir plus rapidement des données)
+setInterval(saveMemberCountSnapshot, 10 * 60 * 1000); // Toutes les 10 minutes
 
-// Prendre un snapshot au démarrage (après quelques secondes pour laisser le bot se connecter)
-setTimeout(saveMemberCountSnapshot, 10000); // 10 secondes après le démarrage
+// Prendre des snapshots au démarrage pour initialiser les données
+setTimeout(saveMemberCountSnapshot, 10000); // Premier snapshot après 10 secondes
+setTimeout(saveMemberCountSnapshot, 70000); // Deuxième snapshot après 70 secondes (pour avoir déjà une différence)
 
 // Détecter quand un membre reçoit ou perd le rôle spécifique
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {

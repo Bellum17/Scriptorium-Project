@@ -430,7 +430,7 @@ class DatabaseManager {
         }
     }
 
-    // Obtenir les statistiques de membres par heure (calcule arrivées/départs par différence)
+    // Obtenir les statistiques de membres par heure (nombre total de membres par heure)
     async getMemberStatsByHour(guildId, hours = 24) {
         const query = `WITH hour_series AS (
                 SELECT generate_series(
@@ -442,32 +442,29 @@ class DatabaseManager {
             snapshots_by_hour AS (
                 SELECT 
                     DATE_TRUNC('hour', timestamp) as hour,
-                    AVG(member_count) as avg_count
+                    ROUND(AVG(member_count)) as member_count,
+                    LAG(ROUND(AVG(member_count))) OVER (ORDER BY DATE_TRUNC('hour', timestamp)) as prev_count
                 FROM member_snapshots
                 WHERE guild_id = $1
-                  AND timestamp >= NOW() - INTERVAL '${hours} hours'
+                  AND timestamp >= NOW() - INTERVAL '${hours + 1} hours'
                 GROUP BY DATE_TRUNC('hour', timestamp)
-            ),
-            changes AS (
-                SELECT 
-                    hour,
-                    avg_count,
-                    LAG(avg_count) OVER (ORDER BY hour) as prev_count
-                FROM snapshots_by_hour
             )
             SELECT 
                 hs.hour,
-                COALESCE(GREATEST(ROUND(c.avg_count - c.prev_count), 0), 0) as joins,
-                COALESCE(GREATEST(ROUND(c.prev_count - c.avg_count), 0), 0) as leaves
+                COALESCE(s.member_count, 
+                    (SELECT member_count FROM snapshots_by_hour WHERE hour < hs.hour ORDER BY hour DESC LIMIT 1), 
+                    0) as member_count,
+                COALESCE(GREATEST(s.member_count - s.prev_count, 0), 0) as joins,
+                COALESCE(GREATEST(s.prev_count - s.member_count, 0), 0) as leaves
             FROM hour_series hs
-            LEFT JOIN changes c ON c.hour = hs.hour
+            LEFT JOIN snapshots_by_hour s ON s.hour = hs.hour
             ORDER BY hs.hour ASC`;
 
         const result = await this.pool.query(query, [guildId]);
         return result.rows;
     }
 
-    // Obtenir les statistiques de membres par jour (calcule arrivées/départs par différence)
+    // Obtenir les statistiques de membres par jour (nombre total de membres par jour)
     async getMemberStatsByDay(guildId, days = 30) {
         const query = `WITH day_series AS (
                 SELECT generate_series(
@@ -479,25 +476,22 @@ class DatabaseManager {
             snapshots_by_day AS (
                 SELECT 
                     DATE(timestamp) as date,
-                    AVG(member_count) as avg_count
+                    ROUND(AVG(member_count)) as member_count,
+                    LAG(ROUND(AVG(member_count))) OVER (ORDER BY DATE(timestamp)) as prev_count
                 FROM member_snapshots
                 WHERE guild_id = $1
-                  AND timestamp >= NOW() - INTERVAL '${days} days'
+                  AND timestamp >= NOW() - INTERVAL '${days + 1} days'
                 GROUP BY DATE(timestamp)
-            ),
-            changes AS (
-                SELECT 
-                    date,
-                    avg_count,
-                    LAG(avg_count) OVER (ORDER BY date) as prev_count
-                FROM snapshots_by_day
             )
             SELECT 
                 ds.date,
-                COALESCE(GREATEST(ROUND(c.avg_count - c.prev_count), 0), 0) as joins,
-                COALESCE(GREATEST(ROUND(c.prev_count - c.avg_count), 0), 0) as leaves
+                COALESCE(s.member_count, 
+                    (SELECT member_count FROM snapshots_by_day WHERE date < ds.date ORDER BY date DESC LIMIT 1), 
+                    0) as member_count,
+                COALESCE(GREATEST(s.member_count - s.prev_count, 0), 0) as joins,
+                COALESCE(GREATEST(s.prev_count - s.member_count, 0), 0) as leaves
             FROM day_series ds
-            LEFT JOIN changes c ON c.date = ds.date
+            LEFT JOIN snapshots_by_day s ON s.date = ds.date
             ORDER BY ds.date ASC`;
 
         const result = await this.pool.query(query, [guildId]);
