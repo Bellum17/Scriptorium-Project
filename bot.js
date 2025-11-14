@@ -356,11 +356,11 @@ async function showServerStats(interaction) {
     await interaction.deferReply();
 
     try {
-        const days = 30; // Toujours 30 jours
+        const hours = 24; // 24 dernières heures
         const channelId = null; // Pas de filtre par channel
 
-        // Récupérer les données statistiques
-        const stats = await db.getMessageStatsByDay(interaction.guildId, days, channelId);
+        // Récupérer les données statistiques par heure
+        const stats = await db.getMessageStatsByHour(interaction.guildId, hours, channelId);
 
         // Vérifier qu'il y a des données
         if (stats.length === 0) {

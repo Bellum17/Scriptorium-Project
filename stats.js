@@ -61,10 +61,19 @@ class StatsGenerator {
 
     // Générer un graphique d'activité (comme Statbot)
     async generateActivityChart(stats, iconPath = 'Messages.png') {
-        // Préparer les données
+        // Préparer les données avec détection automatique du format (heure ou jour)
+        const isHourlyData = stats.length > 0 && stats[0].hour !== undefined;
+        
         const labels = stats.map(s => {
-            const date = new Date(s.date);
-            return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+            if (isHourlyData) {
+                // Format heure par heure
+                const date = new Date(s.hour);
+                return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            } else {
+                // Format jour par jour
+                const date = new Date(s.date);
+                return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+            }
         });
         
         const messageData = stats.map(s => parseInt(s.message_count));
