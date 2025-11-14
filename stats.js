@@ -32,7 +32,7 @@ class StatsGenerator {
                     const ratio = originalWidth / originalHeight;
                     const iconWidth = targetHeight * ratio;
                     const iconHeight = targetHeight;
-                    const iconX = 12; // Position X (7 pixels à droite)
+                    const iconX = 17; // Position X (5 pixels de plus à droite)
                     const iconY = 5; // Position Y (5 pixels plus haut)
                     
                     // Dessiner l'image avec ses proportions originales
@@ -41,13 +41,14 @@ class StatsGenerator {
                     ctx.restore();
                 }
                 
-                // Dessiner le total en gris à droite
+                // Dessiner le total en gris à droite avec label
                 if (chart.options.plugins.customTotal) {
                     ctx.fillStyle = '#b0b0b0';
-                    ctx.font = '18px "DejaVu Sans", sans-serif';
+                    ctx.font = '14px "DejaVu Sans", sans-serif';
                     ctx.textAlign = 'right';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(chart.options.plugins.customTotal, chart.width - 20, 35);
+                    const totalText = `Total de messages : ${chart.options.plugins.customTotal}`;
+                    ctx.fillText(totalText, chart.width - 20, 35);
                 }
                 
                 // Dessiner les labels manuellement avec police DejaVu
@@ -58,7 +59,7 @@ class StatsGenerator {
                     
                     ctx.save();
                     ctx.fillStyle = '#b0b0b0';
-                    ctx.font = '11px "DejaVu Sans Mono", monospace';
+                    ctx.font = '11px "DejaVu Sans", sans-serif';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'top';
                     
