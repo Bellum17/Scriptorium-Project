@@ -127,6 +127,11 @@ async function registerCommands(client) {
                     .setName('utilisateur')
                     .setDescription('Statistiques de vos messages')
             )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('membres')
+                    .setDescription('Statistiques des arrivées et départs de membres')
+            )
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -183,6 +188,9 @@ async function handleCommand(interaction) {
                     break;
                 case 'utilisateur':
                     await showUserStats(interaction);
+                    break;
+                case 'membres':
+                    await showMemberStats(interaction);
                     break;
             }
         }
@@ -510,6 +518,72 @@ async function showUserStats(interaction) {
     }
 }
 
+// Afficher les statistiques des membres (arrivées/départs)
+async function showMemberStats(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const hours = 24; // 24 dernières heures par défaut
+
+        // Récupérer les données statistiques par heure
+        const stats = await db.getMemberStatsByHour(interaction.guildId, hours);
+
+        // Vérifier qu'il y a des données
+        if (stats.length === 0) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> Aucune donnée disponible pour cette période. Le système de tracking est nouveau, les statistiques s\'accumuleront au fil du temps !'
+            });
+            return;
+        }
+
+        // Générer le graphique des membres
+        const chartBuffer = await statsGen.generateMemberActivityChart(stats, 'Membres.png');
+        const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+
+        // Créer le menu déroulant pour changer de période
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('member_stats_period')
+            .setPlaceholder('Choisir une période')
+            .addOptions([
+                {
+                    label: '7 Jours',
+                    value: 'period_7d'
+                },
+                {
+                    label: '14 Jours',
+                    value: 'period_14d'
+                },
+                {
+                    label: '1 Mois',
+                    value: 'period_1m'
+                },
+                {
+                    label: '6 Mois',
+                    value: 'period_6m'
+                },
+                {
+                    label: '1 An',
+                    value: 'period_1y'
+                }
+            ]);
+
+        const row = new ActionRowBuilder()
+            .addComponents(selectMenu);
+
+        // Envoyer l'image avec le menu déroulant
+        await interaction.editReply({
+            files: [attachment],
+            components: [row]
+        });
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la génération des statistiques membres:', error);
+        await interaction.editReply({
+            content: `<:DO_Cross:1436967855273803826> Erreur lors de la génération des statistiques: ${error.message}`
+        });
+    }
+}
+
 // Gestionnaire de menu déroulant
 async function handleSelectMenu(interaction) {
     if (interaction.customId === 'stats_period') {
@@ -673,6 +747,84 @@ async function handleSelectMenu(interaction) {
                 components: []
             });
         }
+    } else if (interaction.customId === 'member_stats_period') {
+        await interaction.deferUpdate();
+
+        try {
+            const period = interaction.values[0];
+            let days;
+
+            // Déterminer le nombre de jours selon la période
+            switch (period) {
+                case 'period_7d':
+                    days = 7;
+                    break;
+                case 'period_14d':
+                    days = 14;
+                    break;
+                case 'period_1m':
+                    days = 30;
+                    break;
+                case 'period_6m':
+                    days = 180;
+                    break;
+                case 'period_1y':
+                    days = 365;
+                    break;
+                default:
+                    days = 30;
+            }
+
+            // Récupérer les nouvelles données (par jour pour les périodes > 24h)
+            const stats = await db.getMemberStatsByDay(interaction.guildId, days);
+
+            // Générer le graphique des membres
+            const chartBuffer = await statsGen.generateMemberActivityChart(stats, 'Membres.png');
+            const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+
+            // Recréer le menu déroulant
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('member_stats_period')
+                .setPlaceholder('Choisir une période')
+                .addOptions([
+                    {
+                        label: '7 Jours',
+                        value: 'period_7d'
+                    },
+                    {
+                        label: '14 Jours',
+                        value: 'period_14d'
+                    },
+                    {
+                        label: '1 Mois',
+                        value: 'period_1m'
+                    },
+                    {
+                        label: '6 Mois',
+                        value: 'period_6m'
+                    },
+                    {
+                        label: '1 An',
+                        value: 'period_1y'
+                    }
+                ]);
+
+            const row = new ActionRowBuilder()
+                .addComponents(selectMenu);
+
+            // Mettre à jour le message avec le nouveau graphique
+            await interaction.editReply({
+                files: [attachment],
+                components: [row]
+            });
+
+        } catch (error) {
+            console.error('❌ Erreur lors du changement de période:', error);
+            await interaction.editReply({
+                content: `<:DO_Cross:1436967855273803826> Erreur: ${error.message}`,
+                components: []
+            });
+        }
     }
 }
 
@@ -694,6 +846,26 @@ client.on(Events.ShardResume, (id, replayedEvents) => {
 // Gestion de la reconnexion
 client.on(Events.ShardReconnecting, (id) => {
     console.log(`🔄 Reconnexion en cours (Shard ${id})...`);
+});
+
+// Gestion des arrivées de membres
+client.on(Events.GuildMemberAdd, async (member) => {
+    try {
+        await db.logMemberEvent(member.id, member.guild.id, 'join');
+        console.log(`✅ Membre rejoint: ${member.user.tag} (${member.guild.name})`);
+    } catch (error) {
+        console.error('❌ Erreur lors du log d\'arrivée de membre:', error);
+    }
+});
+
+// Gestion des départs de membres
+client.on(Events.GuildMemberRemove, async (member) => {
+    try {
+        await db.logMemberEvent(member.id, member.guild.id, 'leave');
+        console.log(`👋 Membre parti: ${member.user.tag} (${member.guild.name})`);
+    } catch (error) {
+        console.error('❌ Erreur lors du log de départ de membre:', error);
+    }
 });
 
 // Gestion des messages pour le proxying

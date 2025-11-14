@@ -69,14 +69,13 @@ class StatsGenerator {
                     ctx.restore();
                 }
                 
-                // Dessiner le total en gris à droite avec label
+                // Dessiner le total en gris à droite
                 if (chart.options.plugins.customTotal) {
                     ctx.fillStyle = '#b0b0b0';
                     ctx.font = '14px "DejaVu Sans", sans-serif';
                     ctx.textAlign = 'right';
                     ctx.textBaseline = 'middle';
-                    const totalText = `Total de messages : ${chart.options.plugins.customTotal}`;
-                    ctx.fillText(totalText, chart.width - 20, 35);
+                    ctx.fillText(chart.options.plugins.customTotal, chart.width - 20, 35);
                 }
                 
                 // Dessiner les labels manuellement avec police DejaVu
@@ -204,7 +203,7 @@ class StatsGenerator {
                     title: {
                         display: false
                     },
-                    customTotal: totalMessages.toLocaleString('fr-FR'),
+                    customTotal: `Total de messages : ${totalMessages.toLocaleString('fr-FR')}`,
                     customIcon: iconImage,
                     customLabels: labels // Passer les labels au plugin personnalisé
                 },
@@ -482,12 +481,151 @@ class StatsGenerator {
                     title: {
                         display: false
                     },
-                    customTotal: totalMessages.toLocaleString('fr-FR'),
+                    customTotal: `Total de messages : ${totalMessages.toLocaleString('fr-FR')}`,
                     customIcon: iconImage, // Icône Messages.png
                     userProfile: avatarImage ? {
                         avatar: avatarImage,
                         username: username
                     } : null,
+                    customLabels: labels
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: {
+                            display: true,
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: true,
+                            lineWidth: 1
+                        },
+                        ticks: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#b9bbbe',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        const imageBuffer = await this.canvasRenderService.renderToBuffer(configuration);
+        return imageBuffer;
+    }
+
+    // Générer un graphique pour les arrivées/départs de membres
+    async generateMemberActivityChart(stats, iconPath = 'Membres.png') {
+        // Préparer les données avec détection automatique du format (heure ou jour)
+        const isHourlyData = stats.length > 0 && stats[0].hour !== undefined;
+        
+        const labels = stats.map(s => {
+            if (isHourlyData) {
+                // Format heure par heure : "14 heures"
+                const date = new Date(s.hour);
+                const hours = date.getHours();
+                return `${hours} heures`;
+            } else {
+                // Format jour par jour : "11. Nov."
+                const date = new Date(s.date);
+                const day = date.getDate();
+                const monthNames = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
+                const month = monthNames[date.getMonth()];
+                return `${day}. ${month}`;
+            }
+        });
+        
+        const joinsData = stats.map(s => parseInt(s.joins));
+        const leavesData = stats.map(s => parseInt(s.leaves));
+        
+        // Calculer les totaux
+        const totalJoins = joinsData.reduce((sum, count) => sum + count, 0);
+        const totalLeaves = leavesData.reduce((sum, count) => sum + count, 0);
+        const netChange = totalJoins - totalLeaves;
+        
+        // Charger l'icône si elle existe
+        let iconImage = null;
+        if (iconPath && fs.existsSync(iconPath)) {
+            try {
+                iconImage = await loadImage(iconPath);
+            } catch (error) {
+                console.warn('⚠️ Impossible de charger l\'icône:', error.message);
+            }
+        }
+
+        // Configuration du graphique avec deux courbes
+        const configuration = {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Arrivées',
+                        data: joinsData,
+                        borderColor: 'rgb(99, 255, 132)', // Vert
+                        backgroundColor: 'rgba(99, 255, 132, 0.3)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: 'rgb(99, 255, 132)',
+                        pointBorderColor: 'rgb(99, 255, 132)',
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: 'rgb(99, 255, 132)',
+                    },
+                    {
+                        label: 'Départs',
+                        data: leavesData,
+                        borderColor: 'rgb(255, 99, 99)', // Rouge
+                        backgroundColor: 'rgba(255, 99, 99, 0.3)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: 'rgb(255, 99, 99)',
+                        pointBorderColor: 'rgb(255, 99, 99)',
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: 'rgb(255, 99, 99)',
+                    }
+                ]
+            },
+            plugins: [this.customPlugin],
+            options: {
+                layout: {
+                    padding: {
+                        top: 50,
+                        left: 20,
+                        right: 40,
+                        bottom: 30
+                    }
+                },
+                responsive: false,
+                maintainAspectRatio: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: false
+                    },
+                    customTotal: `Arrivées: ${totalJoins.toLocaleString('fr-FR')} | Départs: ${totalLeaves.toLocaleString('fr-FR')} | Net: ${netChange >= 0 ? '+' : ''}${netChange.toLocaleString('fr-FR')}`,
+                    customIcon: iconImage,
                     customLabels: labels
                 },
                 scales: {

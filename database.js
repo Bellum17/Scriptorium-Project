@@ -73,6 +73,29 @@ class DatabaseManager {
                 ON message_stats(channel_id, timestamp DESC)
             `);
 
+            // Créer la table des statistiques de membres (arrivées/départs)
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS member_stats (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(255) NOT NULL,
+                    guild_id VARCHAR(255) NOT NULL,
+                    event_type VARCHAR(20) NOT NULL, -- 'join' ou 'leave'
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, guild_id, event_type, timestamp)
+                )
+            `);
+
+            // Index pour optimiser les requêtes de stats membres
+            await this.pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_member_stats_guild_timestamp 
+                ON member_stats(guild_id, timestamp DESC)
+            `);
+
+            await this.pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_member_stats_event 
+                ON member_stats(event_type, timestamp DESC)
+            `);
+
             this.initialized = true;
             console.log('✅ Base de données initialisée avec succès');
         } catch (error) {
@@ -396,6 +419,68 @@ class DatabaseManager {
             LIMIT $2`,
             [guildId, limit]
         );
+        return result.rows;
+    }
+
+    // Logger une arrivée/départ de membre
+    async logMemberEvent(userId, guildId, eventType) {
+        try {
+            await this.pool.query(
+                `INSERT INTO member_stats (user_id, guild_id, event_type)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (user_id, guild_id, event_type, timestamp) DO NOTHING`,
+                [userId, guildId, eventType]
+            );
+        } catch (error) {
+            console.error('⚠️ Erreur lors du log de membre:', error.message);
+        }
+    }
+
+    // Obtenir les statistiques de membres par heure
+    async getMemberStatsByHour(guildId, hours = 24) {
+        const query = `WITH hour_series AS (
+                SELECT generate_series(
+                    DATE_TRUNC('hour', NOW() - INTERVAL '${hours} hours'),
+                    DATE_TRUNC('hour', NOW()),
+                    '1 hour'::interval
+                ) AS hour
+            )
+            SELECT 
+                hs.hour,
+                COALESCE(COUNT(CASE WHEN ms.event_type = 'join' THEN 1 END), 0) as joins,
+                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves
+            FROM hour_series hs
+            LEFT JOIN member_stats ms 
+                ON DATE_TRUNC('hour', ms.timestamp) = hs.hour 
+                AND ms.guild_id = $1
+            GROUP BY hs.hour
+            ORDER BY hs.hour ASC`;
+
+        const result = await this.pool.query(query, [guildId]);
+        return result.rows;
+    }
+
+    // Obtenir les statistiques de membres par jour
+    async getMemberStatsByDay(guildId, days = 30) {
+        const query = `WITH day_series AS (
+                SELECT generate_series(
+                    DATE(NOW() - INTERVAL '${days} days'),
+                    DATE(NOW()),
+                    '1 day'::interval
+                ) AS date
+            )
+            SELECT 
+                ds.date,
+                COALESCE(COUNT(CASE WHEN ms.event_type = 'join' THEN 1 END), 0) as joins,
+                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves
+            FROM day_series ds
+            LEFT JOIN member_stats ms 
+                ON DATE(ms.timestamp) = ds.date 
+                AND ms.guild_id = $1
+            GROUP BY ds.date
+            ORDER BY ds.date ASC`;
+
+        const result = await this.pool.query(query, [guildId]);
         return result.rows;
     }
 
