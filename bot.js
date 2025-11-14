@@ -527,8 +527,11 @@ async function showMemberStats(interaction) {
         const ROLE_ID = '1438937587141185711';
         const hours = 24; // 24 dernières heures par défaut
 
-        // Forcer un snapshot à jour avant d'afficher les stats (instantané avec cache)
+        // Forcer un refresh et snapshot à jour avant d'afficher les stats
         try {
+            console.log(`🔄 Refresh des membres pour les stats...`);
+            await interaction.guild.members.fetch();
+            
             const membersWithRole = interaction.guild.members.cache.filter(
                 member => member.roles.cache.has(ROLE_ID)
             ).size;
@@ -862,7 +865,7 @@ client.on(Events.ShardReconnecting, (id) => {
 });
 
 // Fonction pour compter et enregistrer les membres avec le rôle spécifique
-async function saveMemberCountSnapshot() {
+async function saveMemberCountSnapshot(forceRefresh = false) {
     const ROLE_ID = '1438937587141185711';
     
     try {
@@ -870,7 +873,13 @@ async function saveMemberCountSnapshot() {
         
         for (const [guildId, guild] of guilds) {
             try {
-                // Compter les membres avec le rôle spécifique (utiliser UNIQUEMENT le cache, pas de fetch)
+                // Si forceRefresh, faire un fetch pour remplir le cache
+                if (forceRefresh) {
+                    console.log(`🔄 Chargement des membres de ${guild.name}...`);
+                    await guild.members.fetch();
+                }
+                
+                // Compter les membres avec le rôle spécifique
                 const membersWithRole = guild.members.cache.filter(
                     member => member.roles.cache.has(ROLE_ID)
                 ).size;
@@ -888,12 +897,12 @@ async function saveMemberCountSnapshot() {
     }
 }
 
-// Prendre un snapshot toutes les 10 minutes (pour avoir plus rapidement des données)
-setInterval(saveMemberCountSnapshot, 10 * 60 * 1000); // Toutes les 10 minutes
+// Prendre un snapshot toutes les 10 minutes (utilise le cache uniquement)
+setInterval(() => saveMemberCountSnapshot(false), 10 * 60 * 1000); // Toutes les 10 minutes
 
 // Prendre des snapshots au démarrage pour initialiser les données
-setTimeout(saveMemberCountSnapshot, 10000); // Premier snapshot après 10 secondes
-setTimeout(saveMemberCountSnapshot, 70000); // Deuxième snapshot après 70 secondes (pour avoir déjà une différence)
+setTimeout(() => saveMemberCountSnapshot(true), 10000); // Premier snapshot avec fetch après 10 secondes
+setTimeout(() => saveMemberCountSnapshot(false), 70000); // Deuxième snapshot avec cache après 70 secondes
 
 // Détecter quand un membre reçoit ou perd le rôle spécifique
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
