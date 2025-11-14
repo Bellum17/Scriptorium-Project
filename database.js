@@ -208,30 +208,46 @@ class DatabaseManager {
         }
     }
 
-    // Obtenir les statistiques par heure sur les dernières 24 heures
+    // Obtenir les statistiques par heure sur les dernières 24 heures (remplit les heures manquantes avec 0)
     async getMessageStatsByHour(guildId, hours = 24, channelId = null) {
         const query = channelId 
-            ? `SELECT 
-                    DATE_TRUNC('hour', timestamp) as hour,
-                    COUNT(*) as message_count,
-                    COUNT(DISTINCT user_id) as unique_users,
-                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
-                FROM message_stats
-                WHERE guild_id = $1 
-                  AND channel_id = $2
-                  AND timestamp >= NOW() - INTERVAL '${hours} hours'
-                GROUP BY DATE_TRUNC('hour', timestamp)
-                ORDER BY hour ASC`
-            : `SELECT 
-                    DATE_TRUNC('hour', timestamp) as hour,
-                    COUNT(*) as message_count,
-                    COUNT(DISTINCT user_id) as unique_users,
-                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
-                FROM message_stats
-                WHERE guild_id = $1 
-                  AND timestamp >= NOW() - INTERVAL '${hours} hours'
-                GROUP BY DATE_TRUNC('hour', timestamp)
-                ORDER BY hour ASC`;
+            ? `WITH hour_series AS (
+                    SELECT generate_series(
+                        DATE_TRUNC('hour', NOW() - INTERVAL '${hours} hours'),
+                        DATE_TRUNC('hour', NOW()),
+                        '1 hour'::interval
+                    ) AS hour
+                )
+                SELECT 
+                    hs.hour,
+                    COALESCE(COUNT(ms.id), 0) as message_count,
+                    COALESCE(COUNT(DISTINCT ms.user_id), 0) as unique_users,
+                    COALESCE(COUNT(CASE WHEN ms.is_character THEN 1 END), 0) as character_messages
+                FROM hour_series hs
+                LEFT JOIN message_stats ms 
+                    ON DATE_TRUNC('hour', ms.timestamp) = hs.hour 
+                    AND ms.guild_id = $1 
+                    AND ms.channel_id = $2
+                GROUP BY hs.hour
+                ORDER BY hs.hour ASC`
+            : `WITH hour_series AS (
+                    SELECT generate_series(
+                        DATE_TRUNC('hour', NOW() - INTERVAL '${hours} hours'),
+                        DATE_TRUNC('hour', NOW()),
+                        '1 hour'::interval
+                    ) AS hour
+                )
+                SELECT 
+                    hs.hour,
+                    COALESCE(COUNT(ms.id), 0) as message_count,
+                    COALESCE(COUNT(DISTINCT ms.user_id), 0) as unique_users,
+                    COALESCE(COUNT(CASE WHEN ms.is_character THEN 1 END), 0) as character_messages
+                FROM hour_series hs
+                LEFT JOIN message_stats ms 
+                    ON DATE_TRUNC('hour', ms.timestamp) = hs.hour 
+                    AND ms.guild_id = $1
+                GROUP BY hs.hour
+                ORDER BY hs.hour ASC`;
 
         const params = channelId ? [guildId, channelId] : [guildId];
         const result = await this.pool.query(query, params);
