@@ -151,6 +151,7 @@ class StatsGenerator {
                         display: true,
                         position: 'left',
                         beginAtZero: true,
+                        suggestedMax: Math.max(...messageData) < 10 ? 10 : undefined, // Force un minimum de 10 pour la visibilité
                         grid: {
                             color: 'rgba(255, 255, 255, 0.05)',
                             drawBorder: false,
@@ -161,7 +162,8 @@ class StatsGenerator {
                             font: {
                                 size: 11
                             },
-                            stepSize: undefined
+                            stepSize: undefined,
+                            precision: 0 // Toujours afficher des nombres entiers
                         }
                     }
                 }
