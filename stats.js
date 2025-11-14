@@ -92,11 +92,13 @@ class StatsGenerator {
                         label: 'Messages',
                         data: messageData,
                         borderColor: 'rgb(99, 255, 132)', // Vert comme dans l'image
-                        backgroundColor: 'rgba(99, 255, 132, 0.2)',
+                        backgroundColor: 'rgba(99, 255, 132, 0.3)',
                         borderWidth: 3,
                         tension: 0.4, // Courbe lisse
                         fill: true, // Remplissage sous la courbe
-                        pointRadius: 0, // Pas de points visibles
+                        pointRadius: 3, // Points visibles pour petites valeurs
+                        pointBackgroundColor: 'rgb(99, 255, 132)',
+                        pointBorderColor: 'rgb(99, 255, 132)',
                         pointHoverRadius: 6, // Points au survol
                         pointHoverBackgroundColor: 'rgb(99, 255, 132)',
                     }
@@ -151,7 +153,8 @@ class StatsGenerator {
                         display: true,
                         position: 'left',
                         beginAtZero: true,
-                        suggestedMax: Math.max(...messageData) < 10 ? 10 : undefined, // Force un minimum de 10 pour la visibilité
+                        min: 0,
+                        suggestedMax: Math.max(...messageData) < 5 ? 5 : (Math.max(...messageData) < 10 ? 10 : undefined), // Force un minimum pour la visibilité
                         grid: {
                             color: 'rgba(255, 255, 255, 0.05)',
                             drawBorder: false,
@@ -162,7 +165,7 @@ class StatsGenerator {
                             font: {
                                 size: 11
                             },
-                            stepSize: undefined,
+                            stepSize: Math.max(...messageData) < 5 ? 1 : undefined, // Pas de 1 pour très petites valeurs
                             precision: 0 // Toujours afficher des nombres entiers
                         }
                     }
