@@ -1,3 +1,6 @@
+// Désactiver les warnings expérimentaux
+process.removeAllListeners('warning');
+
 // Chargement des variables d'environnement
 require('dotenv').config();
 
