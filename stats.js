@@ -69,13 +69,17 @@ class StatsGenerator {
                     ctx.restore();
                 }
                 
-                // Dessiner le total en gris à droite
+                // Dessiner le total en gris à droite avec label
                 if (chart.options.plugins.customTotal) {
                     ctx.fillStyle = '#b0b0b0';
                     ctx.font = '14px "DejaVu Sans", sans-serif';
                     ctx.textAlign = 'right';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(chart.options.plugins.customTotal, chart.width - 20, 35);
+                    // Si customTotal est un objet avec label et value, utiliser ça, sinon format par défaut
+                    const totalText = typeof chart.options.plugins.customTotal === 'object' 
+                        ? chart.options.plugins.customTotal.text
+                        : `Total de messages : ${chart.options.plugins.customTotal}`;
+                    ctx.fillText(totalText, chart.width - 20, 35);
                 }
                 
                 // Dessiner les labels manuellement avec police DejaVu
@@ -203,7 +207,7 @@ class StatsGenerator {
                     title: {
                         display: false
                     },
-                    customTotal: `Total de messages : ${totalMessages.toLocaleString('fr-FR')}`,
+                    customTotal: totalMessages.toLocaleString('fr-FR'),
                     customIcon: iconImage,
                     customLabels: labels // Passer les labels au plugin personnalisé
                 },
@@ -481,7 +485,7 @@ class StatsGenerator {
                     title: {
                         display: false
                     },
-                    customTotal: `Total de messages : ${totalMessages.toLocaleString('fr-FR')}`,
+                    customTotal: totalMessages.toLocaleString('fr-FR'),
                     customIcon: iconImage, // Icône Messages.png
                     userProfile: avatarImage ? {
                         avatar: avatarImage,
@@ -526,8 +530,8 @@ class StatsGenerator {
         return imageBuffer;
     }
 
-    // Générer un graphique pour les arrivées/départs de membres
-    async generateMemberActivityChart(stats, iconPath = 'Membres.png') {
+    // Générer un graphique pour les membres (arrivées/départs)
+    async generateMemberChart(stats, iconPath = 'Membres.png') {
         // Préparer les données avec détection automatique du format (heure ou jour)
         const isHourlyData = stats.length > 0 && stats[0].hour !== undefined;
         
@@ -547,14 +551,12 @@ class StatsGenerator {
             }
         });
         
-        const joinsData = stats.map(s => parseInt(s.joins || 0));
-        const leavesData = stats.map(s => parseInt(s.leaves || 0));
-        const memberCountData = stats.map(s => parseInt(s.member_count || 0));
+        const joinsData = stats.map(s => parseInt(s.joins));
+        const leavesData = stats.map(s => parseInt(s.leaves));
         
         // Calculer les totaux
         const totalJoins = joinsData.reduce((sum, count) => sum + count, 0);
         const totalLeaves = leavesData.reduce((sum, count) => sum + count, 0);
-        const currentMembers = memberCountData[memberCountData.length - 1] || 0;
         
         // Charger l'icône si elle existe
         let iconImage = null;
@@ -566,7 +568,7 @@ class StatsGenerator {
             }
         }
 
-        // Configuration du graphique avec deux courbes
+        // Configuration du graphique avec 2 courbes
         const configuration = {
             type: 'line',
             data: {
@@ -625,7 +627,7 @@ class StatsGenerator {
                     title: {
                         display: false
                     },
-                    customTotal: `Membres actuels: ${currentMembers.toLocaleString('fr-FR')} | Arrivées: ${totalJoins.toLocaleString('fr-FR')} | Départs: ${totalLeaves.toLocaleString('fr-FR')}`,
+                    customTotal: null, // Pas de total pour les stats membres
                     customIcon: iconImage,
                     customLabels: labels
                 },

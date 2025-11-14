@@ -38,8 +38,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildWebhooks,
-        GatewayIntentBits.GuildMembers // Nécessaire pour le cache des membres et les changements de rôles
+        GatewayIntentBits.GuildWebhooks
     ],
     rest: {
         timeout: 30000, // Augmenter le timeout à 30 secondes
@@ -524,22 +523,7 @@ async function showMemberStats(interaction) {
     await interaction.deferReply();
 
     try {
-        const ROLE_ID = '1438937587141185711';
         const hours = 24; // 24 dernières heures par défaut
-
-        // Forcer un refresh et snapshot à jour avant d'afficher les stats
-        try {
-            console.log(`🔄 Refresh des membres pour les stats...`);
-            await interaction.guild.members.fetch();
-            
-            const membersWithRole = interaction.guild.members.cache.filter(
-                member => member.roles.cache.has(ROLE_ID)
-            ).size;
-            await db.saveMemberSnapshot(interaction.guildId, membersWithRole);
-            console.log(`✅ Snapshot forcé: ${membersWithRole} membres avec le rôle`);
-        } catch (error) {
-            console.error('⚠️ Erreur snapshot forcé:', error);
-        }
 
         // Récupérer les données statistiques par heure
         const stats = await db.getMemberStatsByHour(interaction.guildId, hours);
@@ -552,9 +536,9 @@ async function showMemberStats(interaction) {
             return;
         }
 
-        // Générer le graphique des membres
-        const chartBuffer = await statsGen.generateMemberActivityChart(stats, 'Membres.png');
-        const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+        // Générer le graphique membres avec Membres.png
+        const chartBuffer = await statsGen.generateMemberChart(stats, 'Membres.png');
+        const attachment = new AttachmentBuilder(chartBuffer, { name: 'member-stats.png' });
 
         // Créer le menu déroulant pour changer de période
         const selectMenu = new StringSelectMenuBuilder()
@@ -794,9 +778,9 @@ async function handleSelectMenu(interaction) {
             // Récupérer les nouvelles données (par jour pour les périodes > 24h)
             const stats = await db.getMemberStatsByDay(interaction.guildId, days);
 
-            // Générer le graphique des membres
-            const chartBuffer = await statsGen.generateMemberActivityChart(stats, 'Membres.png');
-            const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+            // Générer le graphique membres
+            const chartBuffer = await statsGen.generateMemberChart(stats, 'Membres.png');
+            const attachment = new AttachmentBuilder(chartBuffer, { name: 'member-stats.png' });
 
             // Recréer le menu déroulant
             const selectMenu = new StringSelectMenuBuilder()
@@ -864,68 +848,23 @@ client.on(Events.ShardReconnecting, (id) => {
     console.log(`🔄 Reconnexion en cours (Shard ${id})...`);
 });
 
-// Fonction pour compter et enregistrer les membres avec le rôle spécifique
-async function saveMemberCountSnapshot(forceRefresh = false) {
-    const ROLE_ID = '1438937587141185711';
-    
+// Gestion des arrivées de membres
+client.on(Events.GuildMemberAdd, async (member) => {
     try {
-        const guilds = client.guilds.cache;
-        
-        for (const [guildId, guild] of guilds) {
-            try {
-                // Si forceRefresh, faire un fetch pour remplir le cache
-                if (forceRefresh) {
-                    console.log(`🔄 Chargement des membres de ${guild.name}...`);
-                    await guild.members.fetch();
-                }
-                
-                // Compter les membres avec le rôle spécifique
-                const membersWithRole = guild.members.cache.filter(
-                    member => member.roles.cache.has(ROLE_ID)
-                ).size;
-                
-                // Enregistrer le snapshot
-                await db.saveMemberSnapshot(guildId, membersWithRole);
-                
-                console.log(`� Snapshot membres pour ${guild.name}: ${membersWithRole} membres avec le rôle`);
-            } catch (error) {
-                console.error(`❌ Erreur snapshot pour ${guild.name}:`, error.message);
-            }
-        }
+        await db.logMemberEvent(member.user.id, member.guild.id, 'join');
+        console.log(`✅ Membre rejoint: ${member.user.tag} (${member.guild.name})`);
     } catch (error) {
-        console.error('❌ Erreur globale snapshot membres:', error);
+        console.error('❌ Erreur lors du log d\'arrivée de membre:', error);
     }
-}
+});
 
-// Prendre un snapshot toutes les 10 minutes (utilise le cache uniquement)
-setInterval(() => saveMemberCountSnapshot(false), 10 * 60 * 1000); // Toutes les 10 minutes
-
-// Prendre des snapshots au démarrage pour initialiser les données
-setTimeout(() => saveMemberCountSnapshot(true), 10000); // Premier snapshot avec fetch après 10 secondes
-setTimeout(() => saveMemberCountSnapshot(false), 70000); // Deuxième snapshot avec cache après 70 secondes
-
-// Détecter quand un membre reçoit ou perd le rôle spécifique
-client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-    const ROLE_ID = '1438937587141185711';
-    
-    const hadRole = oldMember.roles.cache.has(ROLE_ID);
-    const hasRole = newMember.roles.cache.has(ROLE_ID);
-    
-    // Si le statut du rôle a changé, prendre un snapshot immédiat
-    if (hadRole !== hasRole) {
-        console.log(`🔄 Changement de rôle détecté pour ${newMember.user.tag} - Snapshot immédiat`);
-        
-        // Snapshot immédiat avec le cache (instantané)
-        try {
-            const membersWithRole = newMember.guild.members.cache.filter(
-                member => member.roles.cache.has(ROLE_ID)
-            ).size;
-            
-            await db.saveMemberSnapshot(newMember.guild.id, membersWithRole);
-            console.log(`✅ Snapshot immédiat: ${membersWithRole} membres avec le rôle`);
-        } catch (error) {
-            console.error('❌ Erreur snapshot immédiat:', error);
-        }
+// Gestion des départs de membres
+client.on(Events.GuildMemberRemove, async (member) => {
+    try {
+        await db.logMemberEvent(member.user.id, member.guild.id, 'leave');
+        console.log(`👋 Membre parti: ${member.user.tag} (${member.guild.name})`);
+    } catch (error) {
+        console.error('❌ Erreur lors du log de départ de membre:', error);
     }
 });
 
