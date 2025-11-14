@@ -69,13 +69,18 @@ class StatsGenerator {
         
         const labels = stats.map(s => {
             if (isHourlyData) {
-                // Format heure par heure
+                // Format heure par heure (format simple sans caractères spéciaux)
                 const date = new Date(s.hour);
-                return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                const hours = date.getHours().toString().padStart(2, '0');
+                const minutes = date.getMinutes().toString().padStart(2, '0');
+                return `${hours}:${minutes}`;
             } else {
-                // Format jour par jour
+                // Format jour par jour : "11. Nov."
                 const date = new Date(s.date);
-                return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+                const day = date.getDate();
+                const monthNames = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
+                const month = monthNames[date.getMonth()];
+                return `${day}. ${month}`;
             }
         });
         
@@ -155,11 +160,11 @@ class StatsGenerator {
                         },
                         ticks: {
                             display: true, // Force l'affichage des labels
-                            color: '#ffffff', // Blanc pur pour être sûr
+                            color: '#b0b0b0', // Gris clair
                             font: {
-                                size: 14,
-                                weight: 'bold',
-                                family: 'Arial'
+                                size: 12,
+                                weight: 'normal',
+                                family: 'sans-serif'
                             },
                             maxRotation: 0,
                             minRotation: 0,
@@ -183,11 +188,11 @@ class StatsGenerator {
                         },
                         ticks: {
                             display: true, // Force l'affichage des labels
-                            color: '#ffffff', // Blanc pur
+                            color: '#b0b0b0', // Gris clair
                             font: {
-                                size: 14,
-                                weight: 'bold',
-                                family: 'Arial'
+                                size: 12,
+                                weight: 'normal',
+                                family: 'sans-serif'
                             },
                             stepSize: Math.max(...messageData) < 5 ? 1 : undefined,
                             precision: 0,
