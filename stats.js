@@ -14,7 +14,7 @@ class StatsGenerator {
         const { registerFont } = require('canvas');
         // Note: On utilise la police système, pas besoin d'enregistrer si on utilise 'sans-serif'
         
-        // Plugin personnalisé pour dessiner l'icône et le total
+        // Plugin personnalisé pour dessiner l'icône, le total ET les labels (contournement des problèmes de police)
         const customLegendPlugin = {
             id: 'customLegend',
             afterDraw: (chart) => {
@@ -44,10 +44,36 @@ class StatsGenerator {
                 // Dessiner le total en gris à droite
                 if (chart.options.plugins.customTotal) {
                     ctx.fillStyle = '#b0b0b0';
-                    ctx.font = '18px Arial';
+                    ctx.font = '18px sans-serif';
                     ctx.textAlign = 'right';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(chart.options.plugins.customTotal, chart.width - 20, 35);
+                }
+                
+                // Dessiner les labels manuellement (contournement du problème de police)
+                if (chart.options.plugins.customLabels) {
+                    const labels = chart.options.plugins.customLabels;
+                    const xScale = chart.scales.x;
+                    const yScale = chart.scales.y;
+                    
+                    ctx.save();
+                    ctx.fillStyle = '#b0b0b0';
+                    ctx.font = '11px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    
+                    // Dessiner les labels de l'axe X
+                    const maxLabels = 12;
+                    const step = Math.ceil(labels.length / maxLabels);
+                    labels.forEach((label, index) => {
+                        if (index % step === 0) {
+                            const x = xScale.getPixelForValue(index);
+                            const y = chartArea.bottom + 10;
+                            ctx.fillText(label, x, y);
+                        }
+                    });
+                    
+                    ctx.restore();
                 }
             }
         };
@@ -151,7 +177,8 @@ class StatsGenerator {
                         display: false
                     },
                     customTotal: totalMessages.toLocaleString('fr-FR'),
-                    customIcon: iconImage
+                    customIcon: iconImage,
+                    customLabels: labels // Passer les labels au plugin personnalisé
                 },
                 scales: {
                     x: {
@@ -163,17 +190,7 @@ class StatsGenerator {
                             lineWidth: 1
                         },
                         ticks: {
-                            display: true,
-                            color: '#b0b0b0',
-                            font: {
-                                size: 11,
-                                family: 'monospace' // Police monospace plus compatible
-                            },
-                            maxRotation: 0,
-                            minRotation: 0,
-                            autoSkip: true,
-                            maxTicksLimit: isHourlyData ? 12 : 15,
-                            padding: 8
+                            display: false // Désactivé car on dessine manuellement dans le plugin
                         }
                     },
                     y: {
