@@ -254,30 +254,46 @@ class DatabaseManager {
         return result.rows;
     }
 
-    // Obtenir les statistiques par jour sur une période
+    // Obtenir les statistiques par jour sur une période (remplit les jours manquants avec 0)
     async getMessageStatsByDay(guildId, days = 30, channelId = null) {
         const query = channelId 
-            ? `SELECT 
-                    DATE(timestamp) as date,
-                    COUNT(*) as message_count,
-                    COUNT(DISTINCT user_id) as unique_users,
-                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
-                FROM message_stats
-                WHERE guild_id = $1 
-                  AND channel_id = $2
-                  AND timestamp >= NOW() - INTERVAL '${days} days'
-                GROUP BY DATE(timestamp)
-                ORDER BY date ASC`
-            : `SELECT 
-                    DATE(timestamp) as date,
-                    COUNT(*) as message_count,
-                    COUNT(DISTINCT user_id) as unique_users,
-                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
-                FROM message_stats
-                WHERE guild_id = $1 
-                  AND timestamp >= NOW() - INTERVAL '${days} days'
-                GROUP BY DATE(timestamp)
-                ORDER BY date ASC`;
+            ? `WITH day_series AS (
+                    SELECT generate_series(
+                        DATE(NOW() - INTERVAL '${days} days'),
+                        DATE(NOW()),
+                        '1 day'::interval
+                    ) AS date
+                )
+                SELECT 
+                    ds.date,
+                    COALESCE(COUNT(ms.id), 0) as message_count,
+                    COALESCE(COUNT(DISTINCT ms.user_id), 0) as unique_users,
+                    COALESCE(COUNT(CASE WHEN ms.is_character THEN 1 END), 0) as character_messages
+                FROM day_series ds
+                LEFT JOIN message_stats ms 
+                    ON DATE(ms.timestamp) = ds.date 
+                    AND ms.guild_id = $1 
+                    AND ms.channel_id = $2
+                GROUP BY ds.date
+                ORDER BY ds.date ASC`
+            : `WITH day_series AS (
+                    SELECT generate_series(
+                        DATE(NOW() - INTERVAL '${days} days'),
+                        DATE(NOW()),
+                        '1 day'::interval
+                    ) AS date
+                )
+                SELECT 
+                    ds.date,
+                    COALESCE(COUNT(ms.id), 0) as message_count,
+                    COALESCE(COUNT(DISTINCT ms.user_id), 0) as unique_users,
+                    COALESCE(COUNT(CASE WHEN ms.is_character THEN 1 END), 0) as character_messages
+                FROM day_series ds
+                LEFT JOIN message_stats ms 
+                    ON DATE(ms.timestamp) = ds.date 
+                    AND ms.guild_id = $1
+                GROUP BY ds.date
+                ORDER BY ds.date ASC`;
 
         const params = channelId ? [guildId, channelId] : [guildId];
         const result = await this.pool.query(query, params);

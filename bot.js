@@ -458,15 +458,8 @@ async function handleSelectMenu(interaction) {
             // Récupérer les nouvelles données (par jour pour les périodes > 24h)
             const stats = await db.getMessageStatsByDay(interaction.guildId, days, null);
 
-            if (stats.length === 0) {
-                await interaction.editReply({
-                    content: '<:DO_Cross:1436967855273803826> Aucune donnée disponible pour cette période.',
-                    components: []
-                });
-                return;
-            }
-
-            // Générer le nouveau graphique
+            // Générer le graphique même si toutes les valeurs sont à 0
+            // (la requête SQL remplit automatiquement les jours manquants)
             const chartBuffer = await statsGen.generateActivityChart(stats);
             const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
 
