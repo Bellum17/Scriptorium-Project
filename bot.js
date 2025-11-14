@@ -133,12 +133,14 @@ async function registerCommands(client) {
     }
 }
 
-// Gestion des commandes slash
+// Gestion des commandes slash et interactions
 client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
         await handleCommand(interaction);
     } else if (interaction.isModalSubmit()) {
         await handleModalSubmit(interaction);
+    } else if (interaction.isStringSelectMenu()) {
+        await handleSelectMenu(interaction);
     }
 });
 
@@ -374,9 +376,45 @@ async function showServerStats(interaction) {
         const chartBuffer = await statsGen.generateActivityChart(stats);
         const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
 
-        // Envoyer uniquement l'image sans embed ni texte
+        // Créer le menu déroulant pour changer de période
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('stats_period')
+            .setPlaceholder('Choisir une période')
+            .addOptions([
+                {
+                    label: '7 Jours',
+                    value: 'period_7d',
+                    description: 'Statistiques des 7 derniers jours'
+                },
+                {
+                    label: '14 Jours',
+                    value: 'period_14d',
+                    description: 'Statistiques des 14 derniers jours'
+                },
+                {
+                    label: '1 Mois',
+                    value: 'period_1m',
+                    description: 'Statistiques du dernier mois'
+                },
+                {
+                    label: '6 Mois',
+                    value: 'period_6m',
+                    description: 'Statistiques des 6 derniers mois'
+                },
+                {
+                    label: '1 An',
+                    value: 'period_1y',
+                    description: 'Statistiques de la dernière année'
+                }
+            ]);
+
+        const row = new ActionRowBuilder()
+            .addComponents(selectMenu);
+
+        // Envoyer l'image avec le menu déroulant
         await interaction.editReply({
-            files: [attachment]
+            files: [attachment],
+            components: [row]
         });
 
     } catch (error) {
@@ -384,6 +422,102 @@ async function showServerStats(interaction) {
         await interaction.editReply({
             content: `<:DO_Cross:1436967855273803826> Erreur lors de la génération des statistiques: ${error.message}`
         });
+    }
+}
+
+// Gestionnaire de menu déroulant
+async function handleSelectMenu(interaction) {
+    if (interaction.customId === 'stats_period') {
+        await interaction.deferUpdate();
+
+        try {
+            const period = interaction.values[0];
+            let days;
+
+            // Déterminer le nombre de jours selon la période
+            switch (period) {
+                case 'period_7d':
+                    days = 7;
+                    break;
+                case 'period_14d':
+                    days = 14;
+                    break;
+                case 'period_1m':
+                    days = 30;
+                    break;
+                case 'period_6m':
+                    days = 180;
+                    break;
+                case 'period_1y':
+                    days = 365;
+                    break;
+                default:
+                    days = 30;
+            }
+
+            // Récupérer les nouvelles données (par jour pour les périodes > 24h)
+            const stats = await db.getMessageStatsByDay(interaction.guildId, days, null);
+
+            if (stats.length === 0) {
+                await interaction.editReply({
+                    content: '<:DO_Cross:1436967855273803826> Aucune donnée disponible pour cette période.',
+                    components: []
+                });
+                return;
+            }
+
+            // Générer le nouveau graphique
+            const chartBuffer = await statsGen.generateActivityChart(stats);
+            const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+
+            // Recréer le menu déroulant
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('stats_period')
+                .setPlaceholder('Choisir une période')
+                .addOptions([
+                    {
+                        label: '7 Jours',
+                        value: 'period_7d',
+                        description: 'Statistiques des 7 derniers jours'
+                    },
+                    {
+                        label: '14 Jours',
+                        value: 'period_14d',
+                        description: 'Statistiques des 14 derniers jours'
+                    },
+                    {
+                        label: '1 Mois',
+                        value: 'period_1m',
+                        description: 'Statistiques du dernier mois'
+                    },
+                    {
+                        label: '6 Mois',
+                        value: 'period_6m',
+                        description: 'Statistiques des 6 derniers mois'
+                    },
+                    {
+                        label: '1 An',
+                        value: 'period_1y',
+                        description: 'Statistiques de la dernière année'
+                    }
+                ]);
+
+            const row = new ActionRowBuilder()
+                .addComponents(selectMenu);
+
+            // Mettre à jour le message avec le nouveau graphique
+            await interaction.editReply({
+                files: [attachment],
+                components: [row]
+            });
+
+        } catch (error) {
+            console.error('❌ Erreur lors du changement de période:', error);
+            await interaction.editReply({
+                content: `<:DO_Cross:1436967855273803826> Erreur: ${error.message}`,
+                components: []
+            });
+        }
     }
 }
 
