@@ -1,11 +1,11 @@
-# Configuration Nixpacks pour Railway
-# https://nixpacks.com/docs/configuration/file
-
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ['nodejs', 'python3', 'pkg-config', 'cairo', 'pango', 'libjpeg', 'giflib', 'librsvg', 'pixman', 'fontconfig', 'freetype']
 
 [phases.install]
-cmds = ["npm ci --only=production"]
+cmds = ['npm ci']
+
+[phases.build]
+cmds = ['echo "Build complete"']
 
 [start]
-cmd = "npm start"
+cmd = 'node bot.js'

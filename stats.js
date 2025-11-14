@@ -10,6 +10,10 @@ class StatsGenerator {
         this.width = 1000;
         this.height = 400;
         
+        // Enregistrer une police de base pour éviter les erreurs Fontconfig
+        const { registerFont } = require('canvas');
+        // Note: On utilise la police système, pas besoin d'enregistrer si on utilise 'sans-serif'
+        
         // Plugin personnalisé pour dessiner l'icône et le total
         const customLegendPlugin = {
             id: 'customLegend',
@@ -159,18 +163,17 @@ class StatsGenerator {
                             lineWidth: 1
                         },
                         ticks: {
-                            display: true, // Force l'affichage des labels
-                            color: '#b0b0b0', // Gris clair
+                            display: true,
+                            color: '#b0b0b0',
                             font: {
-                                size: 12,
-                                weight: 'normal',
-                                family: 'sans-serif'
+                                size: 11,
+                                family: 'monospace' // Police monospace plus compatible
                             },
                             maxRotation: 0,
                             minRotation: 0,
                             autoSkip: true,
                             maxTicksLimit: isHourlyData ? 12 : 15,
-                            padding: 5
+                            padding: 8
                         }
                     },
                     y: {
@@ -187,16 +190,15 @@ class StatsGenerator {
                             lineWidth: 1
                         },
                         ticks: {
-                            display: true, // Force l'affichage des labels
-                            color: '#b0b0b0', // Gris clair
+                            display: true,
+                            color: '#b0b0b0',
                             font: {
-                                size: 12,
-                                weight: 'normal',
-                                family: 'sans-serif'
+                                size: 11,
+                                family: 'monospace' // Police monospace plus compatible
                             },
                             stepSize: Math.max(...messageData) < 5 ? 1 : undefined,
                             precision: 0,
-                            padding: 5
+                            padding: 8
                         }
                     }
                 }
