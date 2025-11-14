@@ -123,9 +123,9 @@ class StatsGenerator {
                 layout: {
                     padding: {
                         top: 50, // Espace pour le titre personnalisé
-                        left: 10,
-                        right: 10,
-                        bottom: 10
+                        left: 20,
+                        right: 20,
+                        bottom: 30 // Plus d'espace pour les labels
                     }
                 },
                 responsive: false,
@@ -146,23 +146,26 @@ class StatsGenerator {
                 },
                 scales: {
                     x: {
+                        display: true, // Force l'affichage de l'axe
                         grid: {
+                            display: true,
                             color: 'rgba(255, 255, 255, 0.05)',
-                            drawBorder: false,
+                            drawBorder: true,
                             lineWidth: 1
                         },
                         ticks: {
-                            color: '#d0d0d0',
+                            display: true, // Force l'affichage des labels
+                            color: '#ffffff', // Blanc pur pour être sûr
                             font: {
-                                size: 13,
+                                size: 14,
                                 weight: 'bold',
                                 family: 'Arial'
                             },
                             maxRotation: 0,
                             minRotation: 0,
                             autoSkip: true,
-                            maxTicksLimit: isHourlyData ? 12 : 15, // Plus de labels pour les heures
-                            padding: 10
+                            maxTicksLimit: isHourlyData ? 12 : 15,
+                            padding: 5
                         }
                     },
                     y: {
@@ -173,20 +176,22 @@ class StatsGenerator {
                         min: 0,
                         suggestedMax: Math.max(...messageData) < 5 ? 5 : (Math.max(...messageData) < 10 ? 10 : undefined), // Force un minimum pour la visibilité
                         grid: {
+                            display: true,
                             color: 'rgba(255, 255, 255, 0.05)',
-                            drawBorder: false,
+                            drawBorder: true,
                             lineWidth: 1
                         },
                         ticks: {
-                            color: '#d0d0d0',
+                            display: true, // Force l'affichage des labels
+                            color: '#ffffff', // Blanc pur
                             font: {
-                                size: 13,
+                                size: 14,
                                 weight: 'bold',
                                 family: 'Arial'
                             },
-                            stepSize: Math.max(...messageData) < 5 ? 1 : undefined, // Pas de 1 pour très petites valeurs
-                            precision: 0, // Toujours afficher des nombres entiers
-                            padding: 10
+                            stepSize: Math.max(...messageData) < 5 ? 1 : undefined,
+                            precision: 0,
+                            padding: 5
                         }
                     }
                 }
