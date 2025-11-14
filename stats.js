@@ -64,6 +64,9 @@ class StatsGenerator {
         // Préparer les données avec détection automatique du format (heure ou jour)
         const isHourlyData = stats.length > 0 && stats[0].hour !== undefined;
         
+        console.log('📊 Type de données:', isHourlyData ? 'Horaire (24h)' : 'Journalier (30j)');
+        console.log('📊 Nombre de points:', stats.length);
+        
         const labels = stats.map(s => {
             if (isHourlyData) {
                 // Format heure par heure
@@ -75,6 +78,8 @@ class StatsGenerator {
                 return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
             }
         });
+        
+        console.log('📊 Premiers labels:', labels.slice(0, 3));
         
         const messageData = stats.map(s => parseInt(s.message_count));
         
@@ -147,16 +152,17 @@ class StatsGenerator {
                             lineWidth: 1
                         },
                         ticks: {
-                            color: '#b0b0b0',
+                            color: '#d0d0d0',
                             font: {
-                                size: 12,
-                                weight: '500'
+                                size: 13,
+                                weight: 'bold',
+                                family: 'Arial'
                             },
                             maxRotation: 0,
                             minRotation: 0,
                             autoSkip: true,
                             maxTicksLimit: isHourlyData ? 12 : 15, // Plus de labels pour les heures
-                            padding: 8
+                            padding: 10
                         }
                     },
                     y: {
@@ -172,14 +178,15 @@ class StatsGenerator {
                             lineWidth: 1
                         },
                         ticks: {
-                            color: '#b0b0b0',
+                            color: '#d0d0d0',
                             font: {
-                                size: 12,
-                                weight: '500'
+                                size: 13,
+                                weight: 'bold',
+                                family: 'Arial'
                             },
                             stepSize: Math.max(...messageData) < 5 ? 1 : undefined, // Pas de 1 pour très petites valeurs
                             precision: 0, // Toujours afficher des nombres entiers
-                            padding: 8
+                            padding: 10
                         }
                     }
                 }
