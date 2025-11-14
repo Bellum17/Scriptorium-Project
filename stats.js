@@ -21,7 +21,35 @@ class StatsGenerator {
                 const ctx = chart.ctx;
                 const chartArea = chart.chartArea;
                 
-                // Dessiner l'icône (sans texte)
+                // Dessiner la photo de profil et le pseudo centrés (pour stats utilisateur)
+                if (chart.options.plugins.userProfile) {
+                    const profile = chart.options.plugins.userProfile;
+                    const avatar = profile.avatar;
+                    const username = profile.username;
+                    
+                    // Taille et position de l'avatar
+                    const avatarSize = 40;
+                    const centerX = chart.width / 2;
+                    const avatarY = 10;
+                    
+                    // Dessiner l'avatar arrondi
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(centerX, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+                    ctx.closePath();
+                    ctx.clip();
+                    ctx.drawImage(avatar, centerX - avatarSize / 2, avatarY, avatarSize, avatarSize);
+                    ctx.restore();
+                    
+                    // Dessiner le pseudo à côté
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 16px "DejaVu Sans", sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(username, centerX + avatarSize / 2 + 10, avatarY + avatarSize / 2);
+                }
+                
+                // Dessiner l'icône (sans texte) - pour stats serveur
                 if (chart.options.plugins.customIcon) {
                     const icon = chart.options.plugins.customIcon;
                     
@@ -353,6 +381,144 @@ class StatsGenerator {
                             color: '#b9bbbe',
                             font: {
                                 size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        const imageBuffer = await this.canvasRenderService.renderToBuffer(configuration);
+        return imageBuffer;
+    }
+
+    // Générer un graphique pour un utilisateur avec photo de profil
+    async generateUserActivityChart(stats, avatarUrl, username) {
+        // Préparer les données avec détection automatique du format (heure ou jour)
+        const isHourlyData = stats.length > 0 && stats[0].hour !== undefined;
+        
+        console.log('📊 Type de données utilisateur:', isHourlyData ? 'Horaire (24h)' : 'Journalier (30j)');
+        console.log('📊 Nombre de points:', stats.length);
+        
+        const labels = stats.map(s => {
+            if (isHourlyData) {
+                // Format heure par heure : "14 heures"
+                const date = new Date(s.hour);
+                const hours = date.getHours();
+                return `${hours} heures`;
+            } else {
+                // Format jour par jour : "11. Nov."
+                const date = new Date(s.date);
+                const day = date.getDate();
+                const monthNames = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
+                const month = monthNames[date.getMonth()];
+                return `${day}. ${month}`;
+            }
+        });
+        
+        const messageData = stats.map(s => parseInt(s.message_count));
+        
+        // Calculer le total
+        const totalMessages = messageData.reduce((sum, count) => sum + count, 0);
+        
+        // Charger l'avatar
+        let avatarImage = null;
+        try {
+            avatarImage = await loadImage(avatarUrl);
+        } catch (error) {
+            console.warn('⚠️ Impossible de charger l\'avatar:', error.message);
+        }
+
+        // Charger l'icône Messages.png
+        let iconImage = null;
+        const iconPath = 'Messages.png';
+        if (fs.existsSync(iconPath)) {
+            try {
+                iconImage = await loadImage(iconPath);
+            } catch (error) {
+                console.warn('⚠️ Impossible de charger l\'icône:', error.message);
+            }
+        }
+
+        // Configuration du graphique
+        const configuration = {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Messages',
+                        data: messageData,
+                        borderColor: 'rgb(99, 255, 132)',
+                        backgroundColor: 'rgba(99, 255, 132, 0.3)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: 'rgb(99, 255, 132)',
+                        pointBorderColor: 'rgb(99, 255, 132)',
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: 'rgb(99, 255, 132)',
+                    }
+                ]
+            },
+            plugins: [this.customPlugin],
+            options: {
+                layout: {
+                    padding: {
+                        top: 60, // Plus d'espace pour l'avatar et le pseudo
+                        left: 20,
+                        right: 40,
+                        bottom: 30
+                    }
+                },
+                responsive: false,
+                maintainAspectRatio: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: false
+                    },
+                    customTotal: totalMessages.toLocaleString('fr-FR'),
+                    customIcon: iconImage, // Icône Messages.png
+                    userProfile: avatarImage ? {
+                        avatar: avatarImage,
+                        username: username
+                    } : null,
+                    customLabels: labels
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: {
+                            display: true,
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: true,
+                            lineWidth: 1
+                        },
+                        ticks: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#b9bbbe',
+                            font: {
+                                size: 12
                             }
                         }
                     }

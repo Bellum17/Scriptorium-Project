@@ -116,7 +116,17 @@ async function registerCommands(client) {
             ),
         new SlashCommandBuilder()
             .setName('statistiques')
-            .setDescription('Afficher les statistiques du serveur')
+            .setDescription('Afficher les statistiques')
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('messages')
+                    .setDescription('Statistiques des messages du serveur')
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('utilisateur')
+                    .setDescription('Statistiques de vos messages')
+            )
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -165,7 +175,16 @@ async function handleCommand(interaction) {
                     break;
             }
         } else if (interaction.commandName === 'statistiques') {
-            await showServerStats(interaction);
+            const subcommand = interaction.options.getSubcommand();
+            
+            switch (subcommand) {
+                case 'messages':
+                    await showServerStats(interaction);
+                    break;
+                case 'utilisateur':
+                    await showUserStats(interaction);
+                    break;
+            }
         }
     } catch (error) {
         console.error('❌ Erreur lors de l\'exécution de la commande:', error);
@@ -420,6 +439,77 @@ async function showServerStats(interaction) {
     }
 }
 
+// Afficher les statistiques de l'utilisateur
+async function showUserStats(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const hours = 24; // 24 dernières heures par défaut
+        const userId = interaction.user.id;
+        const username = interaction.user.username;
+        
+        // Récupérer l'URL de l'avatar de l'utilisateur
+        const avatarUrl = interaction.user.displayAvatarURL({ extension: 'png', size: 128 });
+
+        // Récupérer les données statistiques par heure
+        const stats = await db.getUserMessageStatsByHour(interaction.guildId, userId, hours);
+
+        // Vérifier qu'il y a des données
+        if (stats.length === 0) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> Aucune donnée disponible pour cette période. Le système de tracking est nouveau, les statistiques s\'accumuleront au fil du temps !'
+            });
+            return;
+        }
+
+        // Générer le graphique utilisateur avec photo de profil
+        const chartBuffer = await statsGen.generateUserActivityChart(stats, avatarUrl, username);
+        const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+
+        // Créer le menu déroulant pour changer de période
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('user_stats_period')
+            .setPlaceholder('Choisir une période')
+            .addOptions([
+                {
+                    label: '7 Jours',
+                    value: 'period_7d'
+                },
+                {
+                    label: '14 Jours',
+                    value: 'period_14d'
+                },
+                {
+                    label: '1 Mois',
+                    value: 'period_1m'
+                },
+                {
+                    label: '6 Mois',
+                    value: 'period_6m'
+                },
+                {
+                    label: '1 An',
+                    value: 'period_1y'
+                }
+            ]);
+
+        const row = new ActionRowBuilder()
+            .addComponents(selectMenu);
+
+        // Envoyer l'image avec le menu déroulant
+        await interaction.editReply({
+            files: [attachment],
+            components: [row]
+        });
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la génération des statistiques utilisateur:', error);
+        await interaction.editReply({
+            content: `<:DO_Cross:1436967855273803826> Erreur lors de la génération des statistiques: ${error.message}`
+        });
+    }
+}
+
 // Gestionnaire de menu déroulant
 async function handleSelectMenu(interaction) {
     if (interaction.customId === 'stats_period') {
@@ -461,6 +551,88 @@ async function handleSelectMenu(interaction) {
             // Recréer le menu déroulant
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('stats_period')
+                .setPlaceholder('Choisir une période')
+                .addOptions([
+                    {
+                        label: '7 Jours',
+                        value: 'period_7d'
+                    },
+                    {
+                        label: '14 Jours',
+                        value: 'period_14d'
+                    },
+                    {
+                        label: '1 Mois',
+                        value: 'period_1m'
+                    },
+                    {
+                        label: '6 Mois',
+                        value: 'period_6m'
+                    },
+                    {
+                        label: '1 An',
+                        value: 'period_1y'
+                    }
+                ]);
+
+            const row = new ActionRowBuilder()
+                .addComponents(selectMenu);
+
+            // Mettre à jour le message avec le nouveau graphique
+            await interaction.editReply({
+                files: [attachment],
+                components: [row]
+            });
+
+        } catch (error) {
+            console.error('❌ Erreur lors du changement de période:', error);
+            await interaction.editReply({
+                content: `<:DO_Cross:1436967855273803826> Erreur: ${error.message}`,
+                components: []
+            });
+        }
+    } else if (interaction.customId === 'user_stats_period') {
+        await interaction.deferUpdate();
+
+        try {
+            const period = interaction.values[0];
+            let days;
+
+            // Déterminer le nombre de jours selon la période
+            switch (period) {
+                case 'period_7d':
+                    days = 7;
+                    break;
+                case 'period_14d':
+                    days = 14;
+                    break;
+                case 'period_1m':
+                    days = 30;
+                    break;
+                case 'period_6m':
+                    days = 180;
+                    break;
+                case 'period_1y':
+                    days = 365;
+                    break;
+                default:
+                    days = 30;
+            }
+
+            const userId = interaction.user.id;
+            const username = interaction.user.username;
+            const avatarUrl = interaction.user.displayAvatarURL({ extension: 'png', size: 128 });
+
+            // Récupérer les nouvelles données (par jour pour les périodes > 24h)
+            const stats = await db.getUserMessageStatsByDay(interaction.guildId, userId, days);
+
+            // Générer le graphique utilisateur
+            const chartBuffer = await statsGen.generateUserActivityChart(stats, avatarUrl, username);
+            const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+
+            // Recréer le menu déroulant
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('user_stats_period')
                 .setPlaceholder('Choisir une période')
                 .addOptions([
                     {

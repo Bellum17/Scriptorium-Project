@@ -316,6 +316,54 @@ class DatabaseManager {
         return result.rows[0];
     }
 
+    // Obtenir les statistiques d'un utilisateur par heure
+    async getUserMessageStatsByHour(guildId, userId, hours = 24) {
+        const query = `WITH hour_series AS (
+                SELECT generate_series(
+                    DATE_TRUNC('hour', NOW() - INTERVAL '${hours} hours'),
+                    DATE_TRUNC('hour', NOW()),
+                    '1 hour'::interval
+                ) AS hour
+            )
+            SELECT 
+                hs.hour,
+                COALESCE(COUNT(ms.id), 0) as message_count
+            FROM hour_series hs
+            LEFT JOIN message_stats ms 
+                ON DATE_TRUNC('hour', ms.timestamp) = hs.hour 
+                AND ms.guild_id = $1
+                AND ms.user_id = $2
+            GROUP BY hs.hour
+            ORDER BY hs.hour ASC`;
+
+        const result = await this.pool.query(query, [guildId, userId]);
+        return result.rows;
+    }
+
+    // Obtenir les statistiques d'un utilisateur par jour
+    async getUserMessageStatsByDay(guildId, userId, days = 30) {
+        const query = `WITH day_series AS (
+                SELECT generate_series(
+                    DATE(NOW() - INTERVAL '${days} days'),
+                    DATE(NOW()),
+                    '1 day'::interval
+                ) AS date
+            )
+            SELECT 
+                ds.date,
+                COALESCE(COUNT(ms.id), 0) as message_count
+            FROM day_series ds
+            LEFT JOIN message_stats ms 
+                ON DATE(ms.timestamp) = ds.date 
+                AND ms.guild_id = $1
+                AND ms.user_id = $2
+            GROUP BY ds.date
+            ORDER BY ds.date ASC`;
+
+        const result = await this.pool.query(query, [guildId, userId]);
+        return result.rows;
+    }
+
     // Obtenir le top des utilisateurs les plus actifs
     async getTopUsers(guildId, limit = 10, days = 30) {
         const result = await this.pool.query(
