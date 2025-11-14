@@ -11,10 +11,7 @@ class StatsGenerator {
         this.canvasRenderService = new ChartJSNodeCanvas({
             width: this.width,
             height: this.height,
-            backgroundColour: '#36393f', // Couleur de fond Discord
-            plugins: {
-                modern: ['chartjs-plugin-datalabels']
-            }
+            backgroundColour: '#36393f' // Couleur de fond Discord
         });
     }
 
