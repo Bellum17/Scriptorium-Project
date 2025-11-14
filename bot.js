@@ -38,7 +38,8 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildWebhooks
+        GatewayIntentBits.GuildWebhooks,
+        GatewayIntentBits.GuildMembers // Nécessaire pour le cache des membres et les changements de rôles
     ],
     rest: {
         timeout: 30000, // Augmenter le timeout à 30 secondes
@@ -526,9 +527,8 @@ async function showMemberStats(interaction) {
         const ROLE_ID = '1438937587141185711';
         const hours = 24; // 24 dernières heures par défaut
 
-        // Forcer un snapshot à jour avant d'afficher les stats
+        // Forcer un snapshot à jour avant d'afficher les stats (instantané avec cache)
         try {
-            await interaction.guild.members.fetch();
             const membersWithRole = interaction.guild.members.cache.filter(
                 member => member.roles.cache.has(ROLE_ID)
             ).size;
@@ -870,10 +870,7 @@ async function saveMemberCountSnapshot() {
         
         for (const [guildId, guild] of guilds) {
             try {
-                // Récupérer tous les membres du serveur
-                await guild.members.fetch();
-                
-                // Compter les membres avec le rôle spécifique
+                // Compter les membres avec le rôle spécifique (utiliser UNIQUEMENT le cache, pas de fetch)
                 const membersWithRole = guild.members.cache.filter(
                     member => member.roles.cache.has(ROLE_ID)
                 ).size;
@@ -908,20 +905,17 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     if (hadRole !== hasRole) {
         console.log(`🔄 Changement de rôle détecté pour ${newMember.user.tag} - Snapshot immédiat`);
         
-        // Attendre 2 secondes pour que Discord sync tous les changements
-        setTimeout(async () => {
-            try {
-                await newMember.guild.members.fetch();
-                const membersWithRole = newMember.guild.members.cache.filter(
-                    member => member.roles.cache.has(ROLE_ID)
-                ).size;
-                
-                await db.saveMemberSnapshot(newMember.guild.id, membersWithRole);
-                console.log(`✅ Snapshot immédiat: ${membersWithRole} membres avec le rôle`);
-            } catch (error) {
-                console.error('❌ Erreur snapshot immédiat:', error);
-            }
-        }, 2000);
+        // Snapshot immédiat avec le cache (instantané)
+        try {
+            const membersWithRole = newMember.guild.members.cache.filter(
+                member => member.roles.cache.has(ROLE_ID)
+            ).size;
+            
+            await db.saveMemberSnapshot(newMember.guild.id, membersWithRole);
+            console.log(`✅ Snapshot immédiat: ${membersWithRole} membres avec le rôle`);
+        } catch (error) {
+            console.error('❌ Erreur snapshot immédiat:', error);
+        }
     }
 });
 
