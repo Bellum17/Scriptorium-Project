@@ -397,9 +397,6 @@ class StatsGenerator {
         // Préparer les données avec détection automatique du format (heure ou jour)
         const isHourlyData = stats.length > 0 && stats[0].hour !== undefined;
         
-        console.log('📊 Type de données utilisateur:', isHourlyData ? 'Horaire (24h)' : 'Journalier (30j)');
-        console.log('📊 Nombre de points:', stats.length);
-        
         const labels = stats.map(s => {
             if (isHourlyData) {
                 // Format heure par heure : "14 heures"
