@@ -848,25 +848,41 @@ client.on(Events.ShardReconnecting, (id) => {
     console.log(`🔄 Reconnexion en cours (Shard ${id})...`);
 });
 
-// Gestion des arrivées de membres
-client.on(Events.GuildMemberAdd, async (member) => {
+// Fonction pour compter et enregistrer les membres avec le rôle spécifique
+async function saveMemberCountSnapshot() {
+    const ROLE_ID = '1438937587141185711';
+    
     try {
-        await db.logMemberEvent(member.id, member.guild.id, 'join');
-        console.log(`✅ Membre rejoint: ${member.user.tag} (${member.guild.name})`);
+        const guilds = client.guilds.cache;
+        
+        for (const [guildId, guild] of guilds) {
+            try {
+                // Récupérer tous les membres du serveur
+                await guild.members.fetch();
+                
+                // Compter les membres avec le rôle spécifique
+                const membersWithRole = guild.members.cache.filter(
+                    member => member.roles.cache.has(ROLE_ID)
+                ).size;
+                
+                // Enregistrer le snapshot
+                await db.saveMemberSnapshot(guildId, membersWithRole);
+                
+                console.log(`� Snapshot membres pour ${guild.name}: ${membersWithRole} membres avec le rôle`);
+            } catch (error) {
+                console.error(`❌ Erreur snapshot pour ${guild.name}:`, error.message);
+            }
+        }
     } catch (error) {
-        console.error('❌ Erreur lors du log d\'arrivée de membre:', error);
+        console.error('❌ Erreur globale snapshot membres:', error);
     }
-});
+}
 
-// Gestion des départs de membres
-client.on(Events.GuildMemberRemove, async (member) => {
-    try {
-        await db.logMemberEvent(member.id, member.guild.id, 'leave');
-        console.log(`👋 Membre parti: ${member.user.tag} (${member.guild.name})`);
-    } catch (error) {
-        console.error('❌ Erreur lors du log de départ de membre:', error);
-    }
-});
+// Prendre un snapshot toutes les heures
+setInterval(saveMemberCountSnapshot, 60 * 60 * 1000); // Toutes les heures
+
+// Prendre un snapshot au démarrage (après quelques secondes pour laisser le bot se connecter)
+setTimeout(saveMemberCountSnapshot, 10000); // 10 secondes après le démarrage
 
 // Gestion des messages pour le proxying
 client.on(Events.MessageCreate, async (message) => {

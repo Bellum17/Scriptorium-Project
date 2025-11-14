@@ -73,27 +73,21 @@ class DatabaseManager {
                 ON message_stats(channel_id, timestamp DESC)
             `);
 
-            // Créer la table des statistiques de membres (arrivées/départs)
+            // Créer la table des snapshots de membres (comptage avec rôle spécifique)
             await this.pool.query(`
-                CREATE TABLE IF NOT EXISTS member_stats (
+                CREATE TABLE IF NOT EXISTS member_snapshots (
                     id SERIAL PRIMARY KEY,
-                    user_id VARCHAR(255) NOT NULL,
                     guild_id VARCHAR(255) NOT NULL,
-                    event_type VARCHAR(20) NOT NULL, -- 'join' ou 'leave'
+                    member_count INTEGER NOT NULL,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, guild_id, event_type, timestamp)
+                    UNIQUE(guild_id, timestamp)
                 )
             `);
 
             // Index pour optimiser les requêtes de stats membres
             await this.pool.query(`
-                CREATE INDEX IF NOT EXISTS idx_member_stats_guild_timestamp 
-                ON member_stats(guild_id, timestamp DESC)
-            `);
-
-            await this.pool.query(`
-                CREATE INDEX IF NOT EXISTS idx_member_stats_event 
-                ON member_stats(event_type, timestamp DESC)
+                CREATE INDEX IF NOT EXISTS idx_member_snapshots_guild_timestamp 
+                ON member_snapshots(guild_id, timestamp DESC)
             `);
 
             this.initialized = true;
@@ -422,21 +416,21 @@ class DatabaseManager {
         return result.rows;
     }
 
-    // Logger une arrivée/départ de membre
-    async logMemberEvent(userId, guildId, eventType) {
+    // Enregistrer un snapshot du nombre de membres
+    async saveMemberSnapshot(guildId, memberCount) {
         try {
             await this.pool.query(
-                `INSERT INTO member_stats (user_id, guild_id, event_type)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (user_id, guild_id, event_type, timestamp) DO NOTHING`,
-                [userId, guildId, eventType]
+                `INSERT INTO member_snapshots (guild_id, member_count)
+                 VALUES ($1, $2)
+                 ON CONFLICT (guild_id, timestamp) DO NOTHING`,
+                [guildId, memberCount]
             );
         } catch (error) {
-            console.error('⚠️ Erreur lors du log de membre:', error.message);
+            console.error('⚠️ Erreur lors du snapshot de membres:', error.message);
         }
     }
 
-    // Obtenir les statistiques de membres par heure
+    // Obtenir les statistiques de membres par heure (calcule arrivées/départs par différence)
     async getMemberStatsByHour(guildId, hours = 24) {
         const query = `WITH hour_series AS (
                 SELECT generate_series(
@@ -444,23 +438,36 @@ class DatabaseManager {
                     DATE_TRUNC('hour', NOW()),
                     '1 hour'::interval
                 ) AS hour
+            ),
+            snapshots_by_hour AS (
+                SELECT 
+                    DATE_TRUNC('hour', timestamp) as hour,
+                    AVG(member_count) as avg_count
+                FROM member_snapshots
+                WHERE guild_id = $1
+                  AND timestamp >= NOW() - INTERVAL '${hours} hours'
+                GROUP BY DATE_TRUNC('hour', timestamp)
+            ),
+            changes AS (
+                SELECT 
+                    hour,
+                    avg_count,
+                    LAG(avg_count) OVER (ORDER BY hour) as prev_count
+                FROM snapshots_by_hour
             )
             SELECT 
                 hs.hour,
-                COALESCE(COUNT(CASE WHEN ms.event_type = 'join' THEN 1 END), 0) as joins,
-                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves
+                COALESCE(GREATEST(ROUND(c.avg_count - c.prev_count), 0), 0) as joins,
+                COALESCE(GREATEST(ROUND(c.prev_count - c.avg_count), 0), 0) as leaves
             FROM hour_series hs
-            LEFT JOIN member_stats ms 
-                ON DATE_TRUNC('hour', ms.timestamp) = hs.hour 
-                AND ms.guild_id = $1
-            GROUP BY hs.hour
+            LEFT JOIN changes c ON c.hour = hs.hour
             ORDER BY hs.hour ASC`;
 
         const result = await this.pool.query(query, [guildId]);
         return result.rows;
     }
 
-    // Obtenir les statistiques de membres par jour
+    // Obtenir les statistiques de membres par jour (calcule arrivées/départs par différence)
     async getMemberStatsByDay(guildId, days = 30) {
         const query = `WITH day_series AS (
                 SELECT generate_series(
@@ -468,16 +475,29 @@ class DatabaseManager {
                     DATE(NOW()),
                     '1 day'::interval
                 ) AS date
+            ),
+            snapshots_by_day AS (
+                SELECT 
+                    DATE(timestamp) as date,
+                    AVG(member_count) as avg_count
+                FROM member_snapshots
+                WHERE guild_id = $1
+                  AND timestamp >= NOW() - INTERVAL '${days} days'
+                GROUP BY DATE(timestamp)
+            ),
+            changes AS (
+                SELECT 
+                    date,
+                    avg_count,
+                    LAG(avg_count) OVER (ORDER BY date) as prev_count
+                FROM snapshots_by_day
             )
             SELECT 
                 ds.date,
-                COALESCE(COUNT(CASE WHEN ms.event_type = 'join' THEN 1 END), 0) as joins,
-                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves
+                COALESCE(GREATEST(ROUND(c.avg_count - c.prev_count), 0), 0) as joins,
+                COALESCE(GREATEST(ROUND(c.prev_count - c.avg_count), 0), 0) as leaves
             FROM day_series ds
-            LEFT JOIN member_stats ms 
-                ON DATE(ms.timestamp) = ds.date 
-                AND ms.guild_id = $1
-            GROUP BY ds.date
+            LEFT JOIN changes c ON c.date = ds.date
             ORDER BY ds.date ASC`;
 
         const result = await this.pool.query(query, [guildId]);
