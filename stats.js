@@ -657,7 +657,9 @@ class StatsGenerator {
                             color: '#b9bbbe',
                             font: {
                                 size: 12
-                            }
+                            },
+                            stepSize: 1, // Forcer les valeurs entières
+                            precision: 0 // Pas de décimales
                         }
                     }
                 }
