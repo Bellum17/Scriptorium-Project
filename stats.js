@@ -44,13 +44,13 @@ class StatsGenerator {
                 // Dessiner le total en gris à droite
                 if (chart.options.plugins.customTotal) {
                     ctx.fillStyle = '#b0b0b0';
-                    ctx.font = '18px sans-serif';
+                    ctx.font = '18px "DejaVu Sans", sans-serif';
                     ctx.textAlign = 'right';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(chart.options.plugins.customTotal, chart.width - 20, 35);
                 }
                 
-                // Dessiner les labels manuellement (contournement du problème de police)
+                // Dessiner les labels manuellement avec police DejaVu
                 if (chart.options.plugins.customLabels) {
                     const labels = chart.options.plugins.customLabels;
                     const xScale = chart.scales.x;
@@ -58,7 +58,7 @@ class StatsGenerator {
                     
                     ctx.save();
                     ctx.fillStyle = '#b0b0b0';
-                    ctx.font = '11px monospace';
+                    ctx.font = '11px "DejaVu Sans Mono", monospace';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'top';
                     
@@ -210,7 +210,7 @@ class StatsGenerator {
                             color: '#b0b0b0',
                             font: {
                                 size: 11,
-                                family: 'monospace' // Police monospace plus compatible
+                                family: '"DejaVu Sans", sans-serif' // Police DejaVu installée via Dockerfile
                             },
                             stepSize: Math.max(...messageData) < 5 ? 1 : undefined,
                             precision: 0,
