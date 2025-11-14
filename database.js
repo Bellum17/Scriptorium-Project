@@ -208,6 +208,36 @@ class DatabaseManager {
         }
     }
 
+    // Obtenir les statistiques par heure sur les dernières 24 heures
+    async getMessageStatsByHour(guildId, hours = 24, channelId = null) {
+        const query = channelId 
+            ? `SELECT 
+                    DATE_TRUNC('hour', timestamp) as hour,
+                    COUNT(*) as message_count,
+                    COUNT(DISTINCT user_id) as unique_users,
+                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
+                FROM message_stats
+                WHERE guild_id = $1 
+                  AND channel_id = $2
+                  AND timestamp >= NOW() - INTERVAL '${hours} hours'
+                GROUP BY DATE_TRUNC('hour', timestamp)
+                ORDER BY hour ASC`
+            : `SELECT 
+                    DATE_TRUNC('hour', timestamp) as hour,
+                    COUNT(*) as message_count,
+                    COUNT(DISTINCT user_id) as unique_users,
+                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
+                FROM message_stats
+                WHERE guild_id = $1 
+                  AND timestamp >= NOW() - INTERVAL '${hours} hours'
+                GROUP BY DATE_TRUNC('hour', timestamp)
+                ORDER BY hour ASC`;
+
+        const params = channelId ? [guildId, channelId] : [guildId];
+        const result = await this.pool.query(query, params);
+        return result.rows;
+    }
+
     // Obtenir les statistiques par jour sur une période
     async getMessageStatsByDay(guildId, days = 30, channelId = null) {
         const query = channelId 
