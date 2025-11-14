@@ -1,5 +1,8 @@
 // Générateur de graphiques de statistiques
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const fs = require('fs');
+const path = require('path');
+const { loadImage } = require('canvas');
 
 class StatsGenerator {
     constructor() {
@@ -7,16 +10,57 @@ class StatsGenerator {
         this.width = 1000;
         this.height = 400;
         
+        // Plugin personnalisé pour dessiner l'icône et le total
+        const customLegendPlugin = {
+            id: 'customLegend',
+            afterDraw: (chart) => {
+                const ctx = chart.ctx;
+                const chartArea = chart.chartArea;
+                
+                // Dessiner l'icône (sans texte)
+                if (chart.options.plugins.customIcon) {
+                    const icon = chart.options.plugins.customIcon;
+                    
+                    // Calculer les dimensions en préservant le ratio original
+                    const originalWidth = icon.width;
+                    const originalHeight = icon.height;
+                    const targetHeight = 35; // Hauteur souhaitée
+                    const ratio = originalWidth / originalHeight;
+                    const iconWidth = targetHeight * ratio;
+                    const iconHeight = targetHeight;
+                    const iconX = 5; // Position X alignée avec les chiffres de l'axe Y
+                    const iconY = 10; // Position Y (quelques pixels plus haut)
+                    
+                    // Dessiner l'image avec ses proportions originales
+                    ctx.save();
+                    ctx.drawImage(icon, iconX, iconY, iconWidth, iconHeight);
+                    ctx.restore();
+                }
+                
+                // Dessiner le total en gris à droite
+                if (chart.options.plugins.customTotal) {
+                    ctx.fillStyle = '#b0b0b0';
+                    ctx.font = '18px Arial';
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(chart.options.plugins.customTotal, chart.width - 20, 35);
+                }
+            }
+        };
+        
         // Créer le service de rendu
         this.canvasRenderService = new ChartJSNodeCanvas({
             width: this.width,
             height: this.height,
             backgroundColour: '#36393f' // Couleur de fond Discord
         });
+        
+        // Enregistrer le plugin personnalisé
+        this.customPlugin = customLegendPlugin;
     }
 
     // Générer un graphique d'activité (comme Statbot)
-    async generateActivityChart(stats) {
+    async generateActivityChart(stats, iconPath = 'Messages.png') {
         // Préparer les données
         const labels = stats.map(s => {
             const date = new Date(s.date);
@@ -24,37 +68,50 @@ class StatsGenerator {
         });
         
         const messageData = stats.map(s => parseInt(s.message_count));
-        const userData = stats.map(s => parseInt(s.unique_users));
+        
+        // Calculer le total
+        const totalMessages = messageData.reduce((sum, count) => sum + count, 0);
+        
+        // Charger l'icône si elle existe
+        let iconImage = null;
+        if (iconPath && fs.existsSync(iconPath)) {
+            try {
+                iconImage = await loadImage(iconPath);
+            } catch (error) {
+                console.warn('⚠️ Impossible de charger l\'icône:', error.message);
+            }
+        }
 
         // Configuration du graphique
         const configuration = {
-            type: 'bar',
+            type: 'line',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        type: 'bar',
                         label: 'Messages',
                         data: messageData,
-                        backgroundColor: 'rgba(114, 155, 182, 0.6)', // Couleur #729bb6 avec transparence
-                        borderColor: 'rgba(114, 155, 182, 1)',
-                        borderWidth: 1,
-                        yAxisID: 'y',
-                    },
-                    {
-                        type: 'line',
-                        label: 'Contributeurs',
-                        data: userData,
-                        borderColor: 'rgb(99, 255, 132)',
+                        borderColor: 'rgb(99, 255, 132)', // Vert comme dans l'image
                         backgroundColor: 'rgba(99, 255, 132, 0.2)',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true,
-                        yAxisID: 'y1',
+                        borderWidth: 3,
+                        tension: 0.4, // Courbe lisse
+                        fill: true, // Remplissage sous la courbe
+                        pointRadius: 0, // Pas de points visibles
+                        pointHoverRadius: 6, // Points au survol
+                        pointHoverBackgroundColor: 'rgb(99, 255, 132)',
                     }
                 ]
             },
+            plugins: [this.customPlugin],
             options: {
+                layout: {
+                    padding: {
+                        top: 50, // Espace pour le titre personnalisé
+                        left: 10,
+                        right: 10,
+                        bottom: 10
+                    }
+                },
                 responsive: false,
                 maintainAspectRatio: true,
                 interaction: {
@@ -63,72 +120,48 @@ class StatsGenerator {
                 },
                 plugins: {
                     legend: {
-                        display: true,
-                        position: 'top',
-                        labels: {
-                            color: '#ffffff',
-                            font: {
-                                size: 14,
-                                family: 'Arial'
-                            }
-                        }
+                        display: false
                     },
                     title: {
                         display: false
-                    }
+                    },
+                    customTotal: totalMessages.toLocaleString('fr-FR'),
+                    customIcon: iconImage
                 },
                 scales: {
                     x: {
                         grid: {
-                            color: 'rgba(255, 255, 255, 0.1)',
-                            drawBorder: false
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: false,
+                            lineWidth: 1
                         },
                         ticks: {
-                            color: '#b9bbbe',
+                            color: '#8e9297',
                             font: {
                                 size: 11
                             },
-                            maxRotation: 45,
-                            minRotation: 45
+                            maxRotation: 0,
+                            minRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 15
                         }
                     },
                     y: {
                         type: 'linear',
                         display: true,
                         position: 'left',
+                        beginAtZero: true,
                         grid: {
-                            color: 'rgba(255, 255, 255, 0.1)',
-                            drawBorder: false
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: false,
+                            lineWidth: 1
                         },
                         ticks: {
-                            color: '#b9bbbe',
+                            color: '#8e9297',
                             font: {
                                 size: 11
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'Messages',
-                            color: '#b9bbbe'
-                        }
-                    },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        grid: {
-                            drawOnChartArea: false,
-                        },
-                        ticks: {
-                            color: '#b9bbbe',
-                            font: {
-                                size: 11
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'Contributeurs',
-                            color: '#b9bbbe'
+                            },
+                            stepSize: undefined
                         }
                     }
                 }
