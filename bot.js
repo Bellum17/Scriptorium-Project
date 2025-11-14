@@ -383,28 +383,23 @@ async function showServerStats(interaction) {
             .addOptions([
                 {
                     label: '7 Jours',
-                    value: 'period_7d',
-                    description: 'Statistiques des 7 derniers jours'
+                    value: 'period_7d'
                 },
                 {
                     label: '14 Jours',
-                    value: 'period_14d',
-                    description: 'Statistiques des 14 derniers jours'
+                    value: 'period_14d'
                 },
                 {
                     label: '1 Mois',
-                    value: 'period_1m',
-                    description: 'Statistiques du dernier mois'
+                    value: 'period_1m'
                 },
                 {
                     label: '6 Mois',
-                    value: 'period_6m',
-                    description: 'Statistiques des 6 derniers mois'
+                    value: 'period_6m'
                 },
                 {
                     label: '1 An',
-                    value: 'period_1y',
-                    description: 'Statistiques de la dernière année'
+                    value: 'period_1y'
                 }
             ]);
 
@@ -470,28 +465,23 @@ async function handleSelectMenu(interaction) {
                 .addOptions([
                     {
                         label: '7 Jours',
-                        value: 'period_7d',
-                        description: 'Statistiques des 7 derniers jours'
+                        value: 'period_7d'
                     },
                     {
                         label: '14 Jours',
-                        value: 'period_14d',
-                        description: 'Statistiques des 14 derniers jours'
+                        value: 'period_14d'
                     },
                     {
                         label: '1 Mois',
-                        value: 'period_1m',
-                        description: 'Statistiques du dernier mois'
+                        value: 'period_1m'
                     },
                     {
                         label: '6 Mois',
-                        value: 'period_6m',
-                        description: 'Statistiques des 6 derniers mois'
+                        value: 'period_6m'
                     },
                     {
                         label: '1 An',
-                        value: 'period_1y',
-                        description: 'Statistiques de la dernière année'
+                        value: 'period_1y'
                     }
                 ]);
 
