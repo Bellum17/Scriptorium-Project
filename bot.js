@@ -115,20 +115,8 @@ async function registerCommands(client) {
                     )
             ),
         new SlashCommandBuilder()
-            .setName('stats')
+            .setName('statistiques')
             .setDescription('Afficher les statistiques du serveur')
-            .addIntegerOption(option =>
-                option
-                    .setName('jours')
-                    .setDescription('Nombre de jours à analyser (7-90)')
-                    .setMinValue(7)
-                    .setMaxValue(90)
-            )
-            .addChannelOption(option =>
-                option
-                    .setName('channel')
-                    .setDescription('Channel spécifique (optionnel)')
-            )
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -174,7 +162,7 @@ async function handleCommand(interaction) {
                     await showCharacterInfo(interaction);
                     break;
             }
-        } else if (interaction.commandName === 'stats') {
+        } else if (interaction.commandName === 'statistiques') {
             await showServerStats(interaction);
         }
     } catch (error) {
@@ -368,15 +356,11 @@ async function showServerStats(interaction) {
     await interaction.deferReply();
 
     try {
-        const days = interaction.options.getInteger('jours') || 30;
-        const channel = interaction.options.getChannel('channel');
-        const channelId = channel ? channel.id : null;
+        const days = 30; // Toujours 30 jours
+        const channelId = null; // Pas de filtre par channel
 
         // Récupérer les données statistiques
         const stats = await db.getMessageStatsByDay(interaction.guildId, days, channelId);
-        const totalStats = await db.getTotalStats(interaction.guildId, days);
-        const topUsers = await db.getTopUsers(interaction.guildId, 5, days);
-        const topCharacters = await db.getTopCharacters(interaction.guildId, 5, days);
 
         // Vérifier qu'il y a des données
         if (stats.length === 0) {
@@ -390,64 +374,8 @@ async function showServerStats(interaction) {
         const chartBuffer = await statsGen.generateActivityChart(stats);
         const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
 
-        // Créer l'embed avec les statistiques
-        const embed = new EmbedBuilder()
-            .setColor(0x729bb6)
-            .setTitle(`📊 Statistiques ${channel ? `de #${channel.name}` : 'du serveur'}`)
-            .setDescription(`**Période:** ${days} derniers jours`)
-            .addFields(
-                {
-                    name: '💬 Total de messages',
-                    value: `\`${parseInt(totalStats.total_messages).toLocaleString()}\``,
-                    inline: true
-                },
-                {
-                    name: '👥 Contributeurs uniques',
-                    value: `\`${parseInt(totalStats.total_users).toLocaleString()}\``,
-                    inline: true
-                },
-                {
-                    name: '🎭 Messages de personnages',
-                    value: `\`${parseInt(totalStats.character_messages).toLocaleString()}\``,
-                    inline: true
-                }
-            )
-            .setImage('attachment://stats.png')
-            .setFooter({ text: `Données du ${new Date().toLocaleDateString('fr-FR')}` })
-            .setTimestamp();
-
-        // Ajouter le top des utilisateurs si disponible
-        if (topUsers.length > 0) {
-            let topUsersText = '';
-            for (let i = 0; i < Math.min(5, topUsers.length); i++) {
-                const user = topUsers[i];
-                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '📍';
-                topUsersText += `${medal} <@${user.user_id}> - \`${parseInt(user.message_count)} msgs\`\n`;
-            }
-            embed.addFields({
-                name: '🏆 Top Contributeurs',
-                value: topUsersText,
-                inline: false
-            });
-        }
-
-        // Ajouter le top des personnages si disponible
-        if (topCharacters.length > 0) {
-            let topCharactersText = '';
-            for (let i = 0; i < Math.min(5, topCharacters.length); i++) {
-                const char = topCharacters[i];
-                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🎭';
-                topCharactersText += `${medal} **${char.character_name}** - \`${parseInt(char.message_count)} msgs\`\n`;
-            }
-            embed.addFields({
-                name: '🎭 Top Personnages',
-                value: topCharactersText,
-                inline: false
-            });
-        }
-
+        // Envoyer uniquement l'image sans embed ni texte
         await interaction.editReply({
-            embeds: [embed],
             files: [attachment]
         });
 
