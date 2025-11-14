@@ -147,14 +147,16 @@ class StatsGenerator {
                             lineWidth: 1
                         },
                         ticks: {
-                            color: '#8e9297',
+                            color: '#b0b0b0',
                             font: {
-                                size: 11
+                                size: 12,
+                                weight: '500'
                             },
                             maxRotation: 0,
                             minRotation: 0,
                             autoSkip: true,
-                            maxTicksLimit: 15
+                            maxTicksLimit: isHourlyData ? 12 : 15, // Plus de labels pour les heures
+                            padding: 8
                         }
                     },
                     y: {
@@ -170,12 +172,14 @@ class StatsGenerator {
                             lineWidth: 1
                         },
                         ticks: {
-                            color: '#8e9297',
+                            color: '#b0b0b0',
                             font: {
-                                size: 11
+                                size: 12,
+                                weight: '500'
                             },
                             stepSize: Math.max(...messageData) < 5 ? 1 : undefined, // Pas de 1 pour très petites valeurs
-                            precision: 0 // Toujours afficher des nombres entiers
+                            precision: 0, // Toujours afficher des nombres entiers
+                            padding: 8
                         }
                     }
                 }
