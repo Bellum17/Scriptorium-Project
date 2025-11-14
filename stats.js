@@ -99,17 +99,17 @@ class StatsGenerator {
         
         const labels = stats.map(s => {
             if (isHourlyData) {
-                // Format heure par heure : "14:30"
+                // Format heure par heure : "14 heures"
                 const date = new Date(s.hour);
-                const hours = date.getHours().toString().padStart(2, '0');
-                const minutes = date.getMinutes().toString().padStart(2, '0');
-                return `${hours}:${minutes}`;
+                const hours = date.getHours();
+                return `${hours} heures`;
             } else {
-                // Format jour par jour : "15/11" (jour/mois en chiffres uniquement)
+                // Format jour par jour : "11. Nov."
                 const date = new Date(s.date);
-                const day = date.getDate().toString().padStart(2, '0');
-                const month = (date.getMonth() + 1).toString().padStart(2, '0');
-                return `${day}/${month}`;
+                const day = date.getDate();
+                const monthNames = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
+                const month = monthNames[date.getMonth()];
+                return `${day}. ${month}`;
             }
         });
         
