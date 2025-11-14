@@ -2,10 +2,11 @@
 require('dotenv').config();
 
 // Import de Discord.js et axios pour les requêtes HTTP
-const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
+const StatsGenerator = require('./stats');
 
 // Configuration du serveur Express pour Railway
 const app = express();
@@ -47,6 +48,9 @@ const client = new Client({
 
 // Initialiser la base de données
 const db = new DatabaseManager();
+
+// Initialiser le générateur de statistiques
+const statsGen = new StatsGenerator();
 
 // Cache des webhooks par channel
 const webhookCache = new Map();
@@ -109,6 +113,21 @@ async function registerCommands(client) {
                             .setDescription('Nom du personnage')
                             .setRequired(true)
                     )
+            ),
+        new SlashCommandBuilder()
+            .setName('stats')
+            .setDescription('Afficher les statistiques du serveur')
+            .addIntegerOption(option =>
+                option
+                    .setName('jours')
+                    .setDescription('Nombre de jours à analyser (7-90)')
+                    .setMinValue(7)
+                    .setMaxValue(90)
+            )
+            .addChannelOption(option =>
+                option
+                    .setName('channel')
+                    .setDescription('Channel spécifique (optionnel)')
             )
     ];
 
@@ -137,24 +156,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // Gestionnaire de commandes
 async function handleCommand(interaction) {
-    if (interaction.commandName !== 'personnage') return;
-
-    const subcommand = interaction.options.getSubcommand();
-
     try {
-        switch (subcommand) {
-            case 'créer':
-                await showCreateCharacterModal(interaction);
-                break;
-            case 'liste':
-                await showCharacterList(interaction);
-                break;
-            case 'supprimer':
-                await deleteCharacter(interaction);
-                break;
-            case 'info':
-                await showCharacterInfo(interaction);
-                break;
+        if (interaction.commandName === 'personnage') {
+            const subcommand = interaction.options.getSubcommand();
+            
+            switch (subcommand) {
+                case 'créer':
+                    await showCreateCharacterModal(interaction);
+                    break;
+                case 'liste':
+                    await showCharacterList(interaction);
+                    break;
+                case 'supprimer':
+                    await deleteCharacter(interaction);
+                    break;
+                case 'info':
+                    await showCharacterInfo(interaction);
+                    break;
+            }
+        } else if (interaction.commandName === 'stats') {
+            await showServerStats(interaction);
         }
     } catch (error) {
         console.error('❌ Erreur lors de l\'exécution de la commande:', error);
@@ -342,6 +363,102 @@ function isValidUrl(string) {
     }
 }
 
+// Afficher les statistiques du serveur
+async function showServerStats(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const days = interaction.options.getInteger('jours') || 30;
+        const channel = interaction.options.getChannel('channel');
+        const channelId = channel ? channel.id : null;
+
+        // Récupérer les données statistiques
+        const stats = await db.getMessageStatsByDay(interaction.guildId, days, channelId);
+        const totalStats = await db.getTotalStats(interaction.guildId, days);
+        const topUsers = await db.getTopUsers(interaction.guildId, 5, days);
+        const topCharacters = await db.getTopCharacters(interaction.guildId, 5, days);
+
+        // Vérifier qu'il y a des données
+        if (stats.length === 0) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> Aucune donnée disponible pour cette période. Le système de tracking est nouveau, les statistiques s\'accumuleront au fil du temps !'
+            });
+            return;
+        }
+
+        // Générer le graphique principal
+        const chartBuffer = await statsGen.generateActivityChart(stats);
+        const attachment = new AttachmentBuilder(chartBuffer, { name: 'stats.png' });
+
+        // Créer l'embed avec les statistiques
+        const embed = new EmbedBuilder()
+            .setColor(0x729bb6)
+            .setTitle(`📊 Statistiques ${channel ? `de #${channel.name}` : 'du serveur'}`)
+            .setDescription(`**Période:** ${days} derniers jours`)
+            .addFields(
+                {
+                    name: '💬 Total de messages',
+                    value: `\`${parseInt(totalStats.total_messages).toLocaleString()}\``,
+                    inline: true
+                },
+                {
+                    name: '👥 Contributeurs uniques',
+                    value: `\`${parseInt(totalStats.total_users).toLocaleString()}\``,
+                    inline: true
+                },
+                {
+                    name: '🎭 Messages de personnages',
+                    value: `\`${parseInt(totalStats.character_messages).toLocaleString()}\``,
+                    inline: true
+                }
+            )
+            .setImage('attachment://stats.png')
+            .setFooter({ text: `Données du ${new Date().toLocaleDateString('fr-FR')}` })
+            .setTimestamp();
+
+        // Ajouter le top des utilisateurs si disponible
+        if (topUsers.length > 0) {
+            let topUsersText = '';
+            for (let i = 0; i < Math.min(5, topUsers.length); i++) {
+                const user = topUsers[i];
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '📍';
+                topUsersText += `${medal} <@${user.user_id}> - \`${parseInt(user.message_count)} msgs\`\n`;
+            }
+            embed.addFields({
+                name: '🏆 Top Contributeurs',
+                value: topUsersText,
+                inline: false
+            });
+        }
+
+        // Ajouter le top des personnages si disponible
+        if (topCharacters.length > 0) {
+            let topCharactersText = '';
+            for (let i = 0; i < Math.min(5, topCharacters.length); i++) {
+                const char = topCharacters[i];
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🎭';
+                topCharactersText += `${medal} **${char.character_name}** - \`${parseInt(char.message_count)} msgs\`\n`;
+            }
+            embed.addFields({
+                name: '🎭 Top Personnages',
+                value: topCharactersText,
+                inline: false
+            });
+        }
+
+        await interaction.editReply({
+            embeds: [embed],
+            files: [attachment]
+        });
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la génération des statistiques:', error);
+        await interaction.editReply({
+            content: `<:DO_Cross:1436967855273803826> Erreur lors de la génération des statistiques: ${error.message}`
+        });
+    }
+}
+
 // Gestion des erreurs
 client.on(Events.Error, (error) => {
     console.error('❌ Erreur Discord:', error);
@@ -364,13 +481,28 @@ client.on(Events.ShardReconnecting, (id) => {
 
 // Gestion des messages pour le proxying
 client.on(Events.MessageCreate, async (message) => {
-    // Ignorer les messages du bot et des webhooks
-    if (message.author.bot || message.webhookId) return;
+    // Ignorer les messages du bot lui-même
+    if (message.author.id === client.user.id) return;
     
     // Ignorer les messages vides
     if (!message.content || message.content.trim().length === 0) return;
 
     try {
+        // Logger le message pour les statistiques (sauf webhooks)
+        if (!message.webhookId && !message.author.bot) {
+            await db.logMessage(
+                message.author.id,
+                message.guildId,
+                message.channelId,
+                message.id,
+                false,
+                null
+            );
+        }
+
+        // Ignorer les messages des webhooks pour le proxying
+        if (message.webhookId || message.author.bot) return;
+
         // Chercher un personnage correspondant au prefix
         const character = await findCharacterByPrefix(message);
         
@@ -448,7 +580,7 @@ async function proxyMessage(message, character) {
         }
 
         // Envoyer le message via le webhook
-        await webhook.send({
+        const webhookMessage = await webhook.send({
             content: finalContent,
             username: character.name,
             avatarURL: character.avatar_url || message.author.displayAvatarURL(),
@@ -457,6 +589,16 @@ async function proxyMessage(message, character) {
                 repliedUser: true
             }
         });
+
+        // Logger le message de personnage pour les statistiques
+        await db.logMessage(
+            message.author.id,
+            message.guildId,
+            message.channelId,
+            webhookMessage.id,
+            true,
+            character.name
+        );
 
         // Supprimer le message original
         await message.delete().catch(err => {

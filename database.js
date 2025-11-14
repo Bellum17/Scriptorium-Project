@@ -47,6 +47,32 @@ class DatabaseManager {
                 ON characters(prefix)
             `);
 
+            // Créer la table des statistiques de messages
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS message_stats (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(255) NOT NULL,
+                    guild_id VARCHAR(255) NOT NULL,
+                    channel_id VARCHAR(255) NOT NULL,
+                    message_id VARCHAR(255) NOT NULL,
+                    is_character BOOLEAN DEFAULT FALSE,
+                    character_name VARCHAR(100),
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(message_id)
+                )
+            `);
+
+            // Index pour optimiser les requêtes de stats
+            await this.pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_message_stats_guild_timestamp 
+                ON message_stats(guild_id, timestamp DESC)
+            `);
+
+            await this.pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_message_stats_channel 
+                ON message_stats(channel_id, timestamp DESC)
+            `);
+
             this.initialized = true;
             console.log('✅ Base de données initialisée avec succès');
         } catch (error) {
@@ -163,6 +189,104 @@ class DatabaseManager {
             [userId, guildId]
         );
         return parseInt(result.rows[0].count);
+    }
+
+    // ==================== STATISTIQUES ====================
+
+    // Enregistrer un message pour les statistiques
+    async logMessage(userId, guildId, channelId, messageId, isCharacter = false, characterName = null) {
+        try {
+            await this.pool.query(
+                `INSERT INTO message_stats (user_id, guild_id, channel_id, message_id, is_character, character_name)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (message_id) DO NOTHING`,
+                [userId, guildId, channelId, messageId, isCharacter, characterName]
+            );
+        } catch (error) {
+            // Ignorer silencieusement les erreurs de log (ne pas bloquer le bot)
+            console.error('⚠️ Erreur lors du log de message:', error.message);
+        }
+    }
+
+    // Obtenir les statistiques par jour sur une période
+    async getMessageStatsByDay(guildId, days = 30, channelId = null) {
+        const query = channelId 
+            ? `SELECT 
+                    DATE(timestamp) as date,
+                    COUNT(*) as message_count,
+                    COUNT(DISTINCT user_id) as unique_users,
+                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
+                FROM message_stats
+                WHERE guild_id = $1 
+                  AND channel_id = $2
+                  AND timestamp >= NOW() - INTERVAL '${days} days'
+                GROUP BY DATE(timestamp)
+                ORDER BY date ASC`
+            : `SELECT 
+                    DATE(timestamp) as date,
+                    COUNT(*) as message_count,
+                    COUNT(DISTINCT user_id) as unique_users,
+                    COUNT(CASE WHEN is_character THEN 1 END) as character_messages
+                FROM message_stats
+                WHERE guild_id = $1 
+                  AND timestamp >= NOW() - INTERVAL '${days} days'
+                GROUP BY DATE(timestamp)
+                ORDER BY date ASC`;
+
+        const params = channelId ? [guildId, channelId] : [guildId];
+        const result = await this.pool.query(query, params);
+        return result.rows;
+    }
+
+    // Obtenir les statistiques totales
+    async getTotalStats(guildId, days = 30) {
+        const result = await this.pool.query(
+            `SELECT 
+                COUNT(*) as total_messages,
+                COUNT(DISTINCT user_id) as total_users,
+                COUNT(DISTINCT channel_id) as total_channels,
+                COUNT(CASE WHEN is_character THEN 1 END) as character_messages
+            FROM message_stats
+            WHERE guild_id = $1 
+              AND timestamp >= NOW() - INTERVAL '${days} days'`,
+            [guildId]
+        );
+        return result.rows[0];
+    }
+
+    // Obtenir le top des utilisateurs les plus actifs
+    async getTopUsers(guildId, limit = 10, days = 30) {
+        const result = await this.pool.query(
+            `SELECT 
+                user_id,
+                COUNT(*) as message_count
+            FROM message_stats
+            WHERE guild_id = $1 
+              AND timestamp >= NOW() - INTERVAL '${days} days'
+            GROUP BY user_id
+            ORDER BY message_count DESC
+            LIMIT $2`,
+            [guildId, limit]
+        );
+        return result.rows;
+    }
+
+    // Obtenir le top des personnages les plus utilisés
+    async getTopCharacters(guildId, limit = 10, days = 30) {
+        const result = await this.pool.query(
+            `SELECT 
+                character_name,
+                COUNT(*) as message_count
+            FROM message_stats
+            WHERE guild_id = $1 
+              AND is_character = TRUE
+              AND timestamp >= NOW() - INTERVAL '${days} days'
+            GROUP BY character_name
+            ORDER BY message_count DESC
+            LIMIT $2`,
+            [guildId, limit]
+        );
+        return result.rows;
     }
 
     // Fermer la connexion
