@@ -32,8 +32,8 @@ class StatsGenerator {
                     const ratio = originalWidth / originalHeight;
                     const iconWidth = targetHeight * ratio;
                     const iconHeight = targetHeight;
-                    const iconX = 5; // Position X alignée avec les chiffres de l'axe Y
-                    const iconY = 10; // Position Y (quelques pixels plus haut)
+                    const iconX = 12; // Position X (7 pixels à droite)
+                    const iconY = 5; // Position Y (5 pixels plus haut)
                     
                     // Dessiner l'image avec ses proportions originales
                     ctx.save();
@@ -158,7 +158,7 @@ class StatsGenerator {
                     padding: {
                         top: 50, // Espace pour le titre personnalisé
                         left: 20,
-                        right: 20,
+                        right: 40, // Plus d'espace à droite pour éviter la coupure
                         bottom: 30 // Plus d'espace pour les labels
                     }
                 },
