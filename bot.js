@@ -523,7 +523,20 @@ async function showMemberStats(interaction) {
     await interaction.deferReply();
 
     try {
+        const ROLE_ID = '1438937587141185711';
         const hours = 24; // 24 dernières heures par défaut
+
+        // Forcer un snapshot à jour avant d'afficher les stats
+        try {
+            await interaction.guild.members.fetch();
+            const membersWithRole = interaction.guild.members.cache.filter(
+                member => member.roles.cache.has(ROLE_ID)
+            ).size;
+            await db.saveMemberSnapshot(interaction.guildId, membersWithRole);
+            console.log(`✅ Snapshot forcé: ${membersWithRole} membres avec le rôle`);
+        } catch (error) {
+            console.error('⚠️ Erreur snapshot forcé:', error);
+        }
 
         // Récupérer les données statistiques par heure
         const stats = await db.getMemberStatsByHour(interaction.guildId, hours);
@@ -883,6 +896,34 @@ setInterval(saveMemberCountSnapshot, 60 * 60 * 1000); // Toutes les heures
 
 // Prendre un snapshot au démarrage (après quelques secondes pour laisser le bot se connecter)
 setTimeout(saveMemberCountSnapshot, 10000); // 10 secondes après le démarrage
+
+// Détecter quand un membre reçoit ou perd le rôle spécifique
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+    const ROLE_ID = '1438937587141185711';
+    
+    const hadRole = oldMember.roles.cache.has(ROLE_ID);
+    const hasRole = newMember.roles.cache.has(ROLE_ID);
+    
+    // Si le statut du rôle a changé, prendre un snapshot immédiat
+    if (hadRole !== hasRole) {
+        console.log(`🔄 Changement de rôle détecté pour ${newMember.user.tag} - Snapshot immédiat`);
+        
+        // Attendre 2 secondes pour que Discord sync tous les changements
+        setTimeout(async () => {
+            try {
+                await newMember.guild.members.fetch();
+                const membersWithRole = newMember.guild.members.cache.filter(
+                    member => member.roles.cache.has(ROLE_ID)
+                ).size;
+                
+                await db.saveMemberSnapshot(newMember.guild.id, membersWithRole);
+                console.log(`✅ Snapshot immédiat: ${membersWithRole} membres avec le rôle`);
+            } catch (error) {
+                console.error('❌ Erreur snapshot immédiat:', error);
+            }
+        }, 2000);
+    }
+});
 
 // Gestion des messages pour le proxying
 client.on(Events.MessageCreate, async (message) => {
