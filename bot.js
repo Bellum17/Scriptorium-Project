@@ -57,8 +57,8 @@ const db = new DatabaseManager();
 // Initialiser le générateur de statistiques
 const statsGen = new StatsGenerator();
 
-// Initialiser le gestionnaire d'IA
-const ai = new AIManager();
+// Initialiser le gestionnaire d'IA (avec la base de données)
+let ai;
 
 // Cache des webhooks par channel
 const webhookCache = new Map();
@@ -71,6 +71,9 @@ client.once(Events.ClientReady, async (readyClient) => {
     // Initialiser la base de données
     try {
         await db.init();
+        // Initialiser l'IA après la base de données
+        ai = new AIManager(db);
+        console.log('✅ Gestionnaire d\'IA initialisé');
     } catch (error) {
         console.error('❌ Impossible d\'initialiser la base de données:', error);
         process.exit(1);

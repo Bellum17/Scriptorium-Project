@@ -2,33 +2,33 @@
 const axios = require('axios');
 
 class AIManager {
-    constructor() {
+    constructor(database) {
         this.apiKey = process.env.OPENROUTER_API_KEY;
         this.baseUrl = 'https://openrouter.ai/api/v1/chat/completions';
+        this.db = database;
         
         // Instructions par défaut pour l'IA
-        this.systemInstructions = {
-            default: "Tu es Scriptorium, un assistant RP littéraire élégant et cultivé. Tu aides les joueurs dans leurs écrits et histoires avec un ton professionnel et créatif."
-        };
-        this.allowedChannels = {}; // guildId -> channelId
+        this.defaultInstructions = "Tu es Scriptorium, un assistant RP littéraire élégant et cultivé. Tu aides les joueurs dans leurs écrits et histoires avec un ton professionnel et créatif.";
     }
 
     // Définir les instructions système pour un serveur
-    setInstructions(guildId, instructions) {
-        this.systemInstructions[guildId] = instructions;
+    async setInstructions(guildId, instructions) {
+        await this.db.setAIInstructions(guildId, instructions);
     }
 
     // Récupérer les instructions pour un serveur
-    getInstructions(guildId) {
-        return this.systemInstructions[guildId] || this.systemInstructions.default;
+    async getInstructions(guildId) {
+        const settings = await this.db.getAISettings(guildId);
+        return settings?.instructions || this.defaultInstructions;
     }
     
-    setAllowedChannel(guildId, channelId) {
-        this.allowedChannels[guildId] = channelId;
+    async setAllowedChannel(guildId, channelId) {
+        await this.db.setAIAllowedChannel(guildId, channelId);
     }
     
-    getAllowedChannel(guildId) {
-        return this.allowedChannels[guildId] || null;
+    async getAllowedChannel(guildId) {
+        const settings = await this.db.getAISettings(guildId);
+        return settings?.allowed_channel_id || null;
     }
 
     // Envoyer une requête à l'IA
@@ -38,11 +38,14 @@ class AIManager {
         }
 
         try {
+            // Récupérer les instructions depuis la base de données
+            const instructions = await this.getInstructions(guildId);
+            
             // Construire les messages avec l'historique
             const messages = [
                 {
                     role: 'system',
-                    content: this.getInstructions(guildId)
+                    content: instructions
                 },
                 ...conversationHistory,
                 {
