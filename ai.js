@@ -102,27 +102,34 @@ Non pas : Un long pavé de texte qui mélange tout.`;
             let content = response.data.choices[0].message.content;
             
             if (!content || content.trim().length === 0) {
+                console.warn('⚠️ Réponse IA vide reçue');
                 throw new Error('L\'IA a renvoyé une réponse vide.');
             }
             
-            // Enlever tous les tokens spéciaux du modèle
-            // Tokens au début : <s>, [INST], [OUT], etc.
-            content = content.replace(/^(<s>|\[INST\]|\[OUT\]|\[\/INST\]|\s)+/gi, '');
+            console.log('🔍 Réponse brute (premiers 100 chars):', content.substring(0, 100));
             
-            // Tokens à la fin : </s>, [/INST], etc.
-            content = content.replace(/(<\/s>|\[\/INST\]|\[OUT\]|\s)+$/gi, '');
+            // Nettoyer les tokens au début (avant le contenu réel)
+            content = content.replace(/^[\s<>[\]/INSTOUT]*/, '');
             
-            // Enlever les tokens au milieu si présents
-            content = content.replace(/\[INST\]/gi, '').replace(/\[\/INST\]/gi, '').replace(/\[OUT\]/gi, '');
+            // Nettoyer les tokens à la fin (après le contenu réel)
+            content = content.replace(/[\s<>[\]/INSTOUT]*$/, '');
+            
+            // Enlever les tokens spéciaux isolés (mais pas si c'est du texte normal)
+            // Remplacer <s>, </s>, [INST], [/INST], [OUT] par rien
+            content = content.replace(/<s>|<\/s>|\[INST\]|\[\/INST\]|\[OUT\]/gi, ' ');
             
             // Nettoyer les espaces multiples et trim
             content = content.replace(/\s+/g, ' ').trim();
             
+            console.log('🧹 Réponse nettoyée (premiers 100 chars):', content.substring(0, 100));
+            
             // Vérifier qu'il reste du contenu après nettoyage
             if (!content || content.length === 0) {
+                console.warn('⚠️ Réponse vide après nettoyage');
                 throw new Error('La réponse de l\'IA est vide après nettoyage.');
             }
             
+            console.log('✅ Réponse valide, longueur:', content.length);
             return content;
         } catch (error) {
             console.error('❌ Erreur lors de la requête IA:', error.response?.data || error.message);

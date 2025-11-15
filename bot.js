@@ -1093,15 +1093,7 @@ async function getServerInfo(guild) {
         const textChannels = guild.channels.cache.filter(c => c.isTextBased()).size;
         const voiceChannels = guild.channels.cache.filter(c => c.isVoiceBased()).size;
         
-        return `
-📊 INFORMATIONS DU SERVEUR :
-• Nom : ${guild.name}
-• Membres totaux : ${memberCount}
-• Utilisateurs : ${userCount}
-• Bots : ${botCount}
-• Salons texte : ${textChannels}
-• Salons vocaux : ${voiceChannels}
-• Rôles : ${roleCount}`;
+        return `📊 Serveur: ${guild.name} | 👥 ${memberCount} membres (${userCount} users, ${botCount} bots) | 📝 ${textChannels} salons texte | 🎙️ ${voiceChannels} vocaux | 🏷️ ${roleCount} rôles`;
     } catch (error) {
         console.error('❌ Erreur lors de la récupération des infos serveur:', error);
         return '';
@@ -1152,9 +1144,10 @@ client.on(Events.MessageCreate, async (message) => {
                         
                         // Obtenir les informations du serveur
                         const serverInfo = await getServerInfo(message.guild);
+                        console.log('📊 Contexte serveur:', serverInfo);
                         
                         // Envoyer le message à l'IA avec les infos du serveur
-                        const messageWithContext = `${serverInfo}\n\nQuestion : ${message.content}`;
+                        const messageWithContext = `[${serverInfo}]\n\n${message.content}`;
                         const response = await ai.chat(message.guildId, messageWithContext);
                         console.log('🤖 Réponse IA reçue, longueur:', response?.length || 0);
                         
