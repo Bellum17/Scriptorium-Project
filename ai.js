@@ -87,12 +87,52 @@ class AIManager {
             const message = await channel.messages.fetch(messageId);
             if (!message) return null;
             
-            return {
+            // Extraire les informations du message
+            const messageData = {
                 author: message.author.username,
                 content: message.content,
                 timestamp: message.createdAt,
-                attachments: message.attachments.size > 0 ? `[${message.attachments.size} fichier(s)]` : null
+                attachments: [],
+                embeds: []
             };
+            
+            // Extraire les fichiers joints (images, documents, etc.)
+            if (message.attachments.size > 0) {
+                message.attachments.forEach(attachment => {
+                    if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+                        // Pour les images, on note qu'il y a une image
+                        messageData.attachments.push({
+                            type: 'image',
+                            url: attachment.url,
+                            name: attachment.name,
+                            size: attachment.size
+                        });
+                    } else {
+                        // Pour les autres fichiers
+                        messageData.attachments.push({
+                            type: 'file',
+                            url: attachment.url,
+                            name: attachment.name,
+                            size: attachment.size
+                        });
+                    }
+                });
+            }
+            
+            // Extraire les embeds (images incorporées, etc.)
+            if (message.embeds.length > 0) {
+                message.embeds.forEach(embed => {
+                    if (embed.image) {
+                        messageData.embeds.push({
+                            type: 'image',
+                            url: embed.image.url,
+                            title: embed.title
+                        });
+                    }
+                });
+            }
+            
+            return messageData;
         } catch (error) {
             console.error('❌ Erreur lors de la récupération du message:', error);
             return null;
@@ -129,8 +169,30 @@ class AIManager {
                 const messageData = await this.parseMessageLink(link);
                 if (messageData) {
                     enhancedMessage += `\n\n📎 Message lié (de ${messageData.author}):\n"${messageData.content}"`;
-                    if (messageData.attachments) {
-                        enhancedMessage += `\n(${messageData.attachments})`;
+                    
+                    // Ajouter les informations sur les fichiers/images
+                    if (messageData.attachments && messageData.attachments.length > 0) {
+                        enhancedMessage += `\n\n📎 Fichiers joints:`;
+                        messageData.attachments.forEach(attachment => {
+                            if (attachment.type === 'image') {
+                                enhancedMessage += `\n  🖼️ Image: ${attachment.name} (${(attachment.size / 1024).toFixed(2)} KB)`;
+                                enhancedMessage += `\n     URL: ${attachment.url}`;
+                            } else {
+                                enhancedMessage += `\n  📄 Fichier: ${attachment.name} (${(attachment.size / 1024).toFixed(2)} KB)`;
+                            }
+                        });
+                    }
+                    
+                    // Ajouter les embeds (images incorporées)
+                    if (messageData.embeds && messageData.embeds.length > 0) {
+                        enhancedMessage += `\n\n🖼️ Images incorporées:`;
+                        messageData.embeds.forEach(embed => {
+                            if (embed.title) {
+                                enhancedMessage += `\n  ${embed.title}: ${embed.url}`;
+                            } else {
+                                enhancedMessage += `\n  ${embed.url}`;
+                            }
+                        });
                     }
                 }
             }
