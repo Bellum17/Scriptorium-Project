@@ -71,8 +71,8 @@ client.once(Events.ClientReady, async (readyClient) => {
     // Initialiser la base de données
     try {
         await db.init();
-        // Initialiser l'IA après la base de données
-        ai = new AIManager(db);
+        // Initialiser l'IA après la base de données avec le client Discord
+        ai = new AIManager(db, client);
         console.log('✅ Gestionnaire d\'IA initialisé');
     } catch (error) {
         console.error('❌ Impossible d\'initialiser la base de données:', error);
@@ -672,31 +672,8 @@ async function handleAIChat(interaction) {
         }
 
         const userMessage = interaction.options.getString('message');
-        
-        // Vérifier que le message n'est pas vide
-        if (!userMessage || userMessage.trim().length === 0) {
-            await interaction.editReply({
-                content: '<:DO_Cross:1436967855273803826> Votre message ne peut pas être vide.'
-            });
-            return;
-        }
-        
-        // Envoyer le message à l'IA
-        const response = await ai.chat(guildId, userMessage);
-
-        // Vérifier que la réponse n'est pas vide
-        if (!response || response.trim().length === 0) {
-            await interaction.editReply({
-                content: '<:DO_Cross:1436967855273803826> L\'IA a renvoyé une réponse vide. Veuillez réessayer.'
-            });
-            return;
-        }
-
-        // Limiter la longueur de la réponse pour Discord (max 4096 caractères pour une description)
-        let finalResponse = response;
-        if (response.length > 3900) {
-            finalResponse = response.substring(0, 3900) + '\n\n**[Réponse tronquée - trop longue pour un seul message]**';
-        }
+        // Envoyer le message à l'IA avec le contexte du serveur et de l'interaction
+        const response = await ai.chat(guildId, userMessage, [], interaction);
 
         // Créer un embed pour la réponse
         const embed = new EmbedBuilder()
@@ -705,7 +682,7 @@ async function handleAIChat(interaction) {
                 name: 'Scriptorium', 
                 iconURL: client.user.displayAvatarURL() 
             })
-            .setDescription(finalResponse)
+            .setDescription(response)
             .setFooter({ 
                 text: `Demande de ${interaction.user.username}`,
                 iconURL: interaction.user.displayAvatarURL()
@@ -1082,57 +1059,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     }
 });
 
-// Fonction pour obtenir les informations du serveur
-async function getServerInfo(guild) {
-    try {
-        // Récupérer les informations basiques
-        const memberCount = guild.memberCount;
-        const channelCount = guild.channels.cache.size;
-        const roleCount = guild.roles.cache.size;
-        
-        // Compter les bots
-        const members = await guild.members.fetch();
-        const botCount = members.filter(m => m.user.bot).size;
-        const userCount = memberCount - botCount;
-        
-        // Récupérer les salons par type
-        const textChannels = guild.channels.cache.filter(c => c.isTextBased());
-        const voiceChannels = guild.channels.cache.filter(c => c.isVoiceBased());
-        
-        // Créer une liste des salons texte avec leurs mentions
-        const textChannelsList = textChannels
-            .map(c => `<#${c.id}>`)
-            .join(' ')
-            .substring(0, 500); // Limiter à 500 caractères
-        
-        // Créer une liste des salons vocaux
-        const voiceChannelsList = voiceChannels
-            .map(c => c.name)
-            .join(', ')
-            .substring(0, 200); // Limiter à 200 caractères
-        
-        // Récupérer les rôles importants (non @everyone)
-        const importantRoles = guild.roles.cache
-            .filter(r => r.name !== '@everyone')
-            .sort((a, b) => b.position - a.position)
-            .first(10)
-            .map(r => `<@&${r.id}>`)
-            .join(' ');
-        
-        const info = `📊 Serveur: ${guild.name} | 👥 ${memberCount} membres (${userCount} users, ${botCount} bots) | 📝 ${textChannels.size} salons texte | 🎙️ ${voiceChannels.size} vocaux | 🏷️ ${roleCount} rôles
-
-📋 Salons texte : ${textChannelsList}
-${voiceChannels.size > 0 ? `🎙️ Salons vocaux : ${voiceChannelsList}\n` : ''}
-🏷️ Rôles : ${importantRoles || 'Aucun rôle'}`;
-        
-        return info;
-    } catch (error) {
-        console.error('❌ Erreur lors de la récupération des infos serveur:', error);
-        return '';
-    }
-}
-
-// Gestion des messages pour le proxying et l'IA
+// Gestion des messages pour le proxying
 client.on(Events.MessageCreate, async (message) => {
     // Ignorer les messages du bot lui-même
     if (message.author.id === client.user.id) return;
@@ -1151,73 +1078,6 @@ client.on(Events.MessageCreate, async (message) => {
                 false,
                 null
             );
-        }
-
-        // Vérifier si c'est une réponse à un message du bot (IA)
-        if (message.reference && message.mentions.has(client.user.id)) {
-            console.log('🔍 Réponse à un message avec mention du bot détectée');
-            try {
-                const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
-                console.log('📨 Message d\'origine récupéré, auteur:', repliedMessage.author.tag);
-                
-                // Vérifier si c'est une réponse à un message du bot
-                if (repliedMessage.author.id === client.user.id) {
-                    console.log('✅ C\'est bien une réponse à un message du bot');
-                    
-                    // Vérifier le salon autorisé
-                    const allowedChannelId = await ai.getAllowedChannel(message.guildId);
-                    console.log('🏠 Salon autorisé:', allowedChannelId || 'Aucun (tous les salons autorisés)');
-                    
-                    if (!allowedChannelId || allowedChannelId === message.channelId) {
-                        console.log('✅ Salon autorisé, génération de la réponse IA...');
-                        
-                        // Envoyer un indicateur de frappe
-                        await message.channel.sendTyping();
-                        
-                        // Obtenir les informations du serveur
-                        const serverInfo = await getServerInfo(message.guild);
-                        console.log('📊 Contexte serveur:', serverInfo);
-                        
-                        // Envoyer le message à l'IA avec les infos du serveur
-                        const messageWithContext = `[${serverInfo}]\n\n${message.content}`;
-                        const response = await ai.chat(message.guildId, messageWithContext);
-                        console.log('🤖 Réponse IA reçue, longueur:', response?.length || 0);
-                        
-                        if (response && response.trim().length > 0) {
-                            // Limiter la longueur de la réponse pour Discord (max 4096 caractères pour une description)
-                            let finalResponse = response;
-                            if (response.length > 3900) {
-                                finalResponse = response.substring(0, 3900) + '\n\n**[Réponse tronquée - trop longue]**';
-                            }
-                            
-                            // Créer un embed pour la réponse
-                            const embed = new EmbedBuilder()
-                                .setColor(0x729bb6)
-                                .setAuthor({ 
-                                    name: 'Scriptorium', 
-                                    iconURL: client.user.displayAvatarURL() 
-                                })
-                                .setDescription(finalResponse)
-                                .setFooter({ 
-                                    text: `Réponse à ${message.author.username}`,
-                                    iconURL: message.author.displayAvatarURL()
-                                })
-                                .setTimestamp();
-
-                            // Répondre au message avec l'embed
-                            await message.reply({ embeds: [embed] });
-                            console.log('✅ Embed envoyé avec succès');
-                        } else {
-                            console.log('❌ Réponse IA vide après nettoyage');
-                        }
-                    } else {
-                        console.log('❌ Salon non autorisé');
-                    }
-                    return;
-                }
-            } catch (error) {
-                console.error('❌ Erreur lors de la réponse IA:', error);
-            }
         }
 
         // Ignorer les messages des webhooks pour le proxying
