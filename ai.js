@@ -54,7 +54,7 @@ class AIManager {
             const response = await axios.post(
                 this.baseUrl,
                 {
-                    model: 'nousresearch/hermes-3-llama-3.1-405b:free', // Modèle gratuit puissant
+                    model: 'mistralai/mistral-7b-instruct', // Modèle gratuit Mistral
                     messages: messages,
                     temperature: 0.7,
                     max_tokens: 1000
@@ -79,12 +79,12 @@ class AIManager {
     // Modèles gratuits disponibles sur OpenRouter
     static getFreeModels() {
         return [
-            'nousresearch/hermes-3-llama-3.1-405b:free', // Le meilleur gratuit (405B paramètres)
-            'meta-llama/llama-3.1-8b-instruct:free',
+            'meta-llama/llama-3.1-8b-instruct:free', // Modèle stable et rapide
             'meta-llama/llama-3.1-70b-instruct:free',
             'google/gemma-2-9b-it:free',
             'microsoft/phi-3-medium-128k-instruct:free',
-            'mistralai/mistral-7b-instruct:free'
+            'mistralai/mistral-7b-instruct:free',
+            'nousresearch/hermes-3-llama-3.1-405b:free' // Puissant mais peut être rate-limited
         ];
     }
 }
