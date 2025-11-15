@@ -85,6 +85,16 @@ class DatabaseManager {
                 )
             `);
 
+            // Créer la table du compteur de membres (snapshots horaires)
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS member_count (
+                    id SERIAL PRIMARY KEY,
+                    guild_id VARCHAR(255) NOT NULL,
+                    member_count INTEGER NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+
             // Index pour optimiser les requêtes de stats membres
             await this.pool.query(`
                 CREATE INDEX IF NOT EXISTS idx_member_stats_guild_timestamp 
@@ -94,6 +104,12 @@ class DatabaseManager {
             await this.pool.query(`
                 CREATE INDEX IF NOT EXISTS idx_member_stats_event 
                 ON member_stats(event_type, timestamp DESC)
+            `);
+
+            // Index pour member_count
+            await this.pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_member_count_guild_timestamp 
+                ON member_count(guild_id, timestamp DESC)
             `);
 
             this.initialized = true;
@@ -422,8 +438,21 @@ class DatabaseManager {
         return result.rows;
     }
 
-    // Logger un événement membre (arrivée ou départ)
-    async logMemberEvent(userId, guildId, eventType) {
+    // Logger le nombre actuel de membres
+    async logMemberCount(guildId, memberCount) {
+        try {
+            await this.pool.query(
+                `INSERT INTO member_count (guild_id, member_count)
+                 VALUES ($1, $2)`,
+                [guildId, memberCount]
+            );
+        } catch (error) {
+            console.error('⚠️ Erreur lors du log du compteur de membres:', error.message);
+        }
+    }
+
+    // Logger un événement membre (arrivée ou départ) et mettre à jour le compteur
+    async logMemberEvent(userId, guildId, eventType, currentMemberCount) {
         try {
             await this.pool.query(
                 `INSERT INTO member_stats (user_id, guild_id, event_type)
@@ -431,12 +460,17 @@ class DatabaseManager {
                  ON CONFLICT (user_id, guild_id, event_type, timestamp) DO NOTHING`,
                 [userId, guildId, eventType]
             );
+            
+            // Logger aussi le nombre actuel de membres
+            if (currentMemberCount !== undefined) {
+                await this.logMemberCount(guildId, currentMemberCount);
+            }
         } catch (error) {
             console.error('⚠️ Erreur lors du log d\'événement membre:', error.message);
         }
     }
 
-    // Obtenir les statistiques de membres par heure (arrivées et départs)
+    // Obtenir les statistiques de membres par heure (arrivées, départs et total)
     async getMemberStatsByHour(guildId, hours = 24) {
         const query = `WITH hour_series AS (
                 SELECT generate_series(
@@ -448,7 +482,15 @@ class DatabaseManager {
             SELECT 
                 hs.hour,
                 COALESCE(COUNT(CASE WHEN ms.event_type = 'join' THEN 1 END), 0) as joins,
-                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves
+                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves,
+                (
+                    SELECT mc.member_count 
+                    FROM member_count mc 
+                    WHERE mc.guild_id = $1 
+                    AND DATE_TRUNC('hour', mc.timestamp) = hs.hour
+                    ORDER BY mc.timestamp DESC 
+                    LIMIT 1
+                ) as member_count
             FROM hour_series hs
             LEFT JOIN member_stats ms 
                 ON DATE_TRUNC('hour', ms.timestamp) = hs.hour 
@@ -460,7 +502,7 @@ class DatabaseManager {
         return result.rows;
     }
 
-    // Obtenir les statistiques de membres par jour (arrivées et départs)
+    // Obtenir les statistiques de membres par jour (arrivées, départs et total)
     async getMemberStatsByDay(guildId, days = 30) {
         const query = `WITH day_series AS (
                 SELECT generate_series(
@@ -472,7 +514,15 @@ class DatabaseManager {
             SELECT 
                 ds.date,
                 COALESCE(COUNT(CASE WHEN ms.event_type = 'join' THEN 1 END), 0) as joins,
-                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves
+                COALESCE(COUNT(CASE WHEN ms.event_type = 'leave' THEN 1 END), 0) as leaves,
+                (
+                    SELECT mc.member_count 
+                    FROM member_count mc 
+                    WHERE mc.guild_id = $1 
+                    AND DATE(mc.timestamp) = ds.date
+                    ORDER BY mc.timestamp DESC 
+                    LIMIT 1
+                ) as member_count
             FROM day_series ds
             LEFT JOIN member_stats ms 
                 ON DATE(ms.timestamp) = ds.date 

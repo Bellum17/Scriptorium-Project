@@ -41,7 +41,8 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildWebhooks
+        GatewayIntentBits.GuildWebhooks,
+        GatewayIntentBits.GuildMembers // Nécessaire pour tracker les arrivées/départs
     ],
     rest: {
         timeout: 30000, // Augmenter le timeout à 30 secondes
@@ -77,6 +78,22 @@ client.once(Events.ClientReady, async (readyClient) => {
     // Définir le statut du bot
     client.user.setActivity('les écrits des joueurs 📖', { type: 3 }); // 3 = WATCHING
     console.log('📖 Statut défini : "Regarde les écrits des joueurs"');
+
+    // Initialiser le compteur de membres pour chaque serveur
+    for (const [guildId, guild] of readyClient.guilds.cache) {
+        const memberCount = guild.memberCount;
+        await db.logMemberCount(guildId, memberCount);
+        console.log(`👥 Membres initialisés pour ${guild.name}: ${memberCount}`);
+    }
+
+    // Mettre à jour le compteur de membres toutes les heures
+    setInterval(async () => {
+        for (const [guildId, guild] of client.guilds.cache) {
+            const memberCount = guild.memberCount;
+            await db.logMemberCount(guildId, memberCount);
+            console.log(`🔄 Compteur mis à jour pour ${guild.name}: ${memberCount}`);
+        }
+    }, 60 * 60 * 1000); // Toutes les heures
 });
 
 // Fonction pour enregistrer les commandes slash
@@ -854,8 +871,9 @@ client.on(Events.ShardReconnecting, (id) => {
 // Gestion des arrivées de membres
 client.on(Events.GuildMemberAdd, async (member) => {
     try {
-        await db.logMemberEvent(member.user.id, member.guild.id, 'join');
-        console.log(`✅ Membre rejoint: ${member.user.tag} (${member.guild.name})`);
+        const memberCount = member.guild.memberCount;
+        await db.logMemberEvent(member.user.id, member.guild.id, 'join', memberCount);
+        console.log(`✅ Membre rejoint: ${member.user.tag} (${member.guild.name}) - Total: ${memberCount}`);
     } catch (error) {
         console.error('❌ Erreur lors du log d\'arrivée de membre:', error);
     }
@@ -864,8 +882,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
 // Gestion des départs de membres
 client.on(Events.GuildMemberRemove, async (member) => {
     try {
-        await db.logMemberEvent(member.user.id, member.guild.id, 'leave');
-        console.log(`👋 Membre parti: ${member.user.tag} (${member.guild.name})`);
+        const memberCount = member.guild.memberCount;
+        await db.logMemberEvent(member.user.id, member.guild.id, 'leave', memberCount);
+        console.log(`👋 Membre parti: ${member.user.tag} (${member.guild.name}) - Total: ${memberCount}`);
     } catch (error) {
         console.error('❌ Erreur lors du log de départ de membre:', error);
     }

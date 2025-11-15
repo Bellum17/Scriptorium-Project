@@ -553,6 +553,7 @@ class StatsGenerator {
         
         const joinsData = stats.map(s => parseInt(s.joins));
         const leavesData = stats.map(s => parseInt(s.leaves));
+        const memberCountData = stats.map(s => s.member_count ? parseInt(s.member_count) : null);
         
         // Calculer les totaux
         const totalJoins = joinsData.reduce((sum, count) => sum + count, 0);
@@ -568,14 +569,29 @@ class StatsGenerator {
             }
         }
 
-        // Configuration du graphique avec 2 courbes
+        // Configuration du graphique avec 3 courbes
         const configuration = {
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Arrivées',
+                        label: 'Membres',
+                        data: memberCountData,
+                        borderColor: 'rgb(99, 132, 255)', // Bleu
+                        backgroundColor: 'rgba(99, 132, 255, 0.3)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: 'rgb(99, 132, 255)',
+                        pointBorderColor: 'rgb(99, 132, 255)',
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: 'rgb(99, 132, 255)',
+                        yAxisID: 'y-total', // Axe Y séparé pour le total
+                    },
+                    {
+                        label: 'Rejoint',
                         data: joinsData,
                         borderColor: 'rgb(99, 255, 132)', // Vert
                         backgroundColor: 'rgba(99, 255, 132, 0.3)',
@@ -587,9 +603,10 @@ class StatsGenerator {
                         pointBorderColor: 'rgb(99, 255, 132)',
                         pointHoverRadius: 6,
                         pointHoverBackgroundColor: 'rgb(99, 255, 132)',
+                        yAxisID: 'y-events', // Axe Y pour les événements
                     },
                     {
-                        label: 'Départs',
+                        label: 'Quitté',
                         data: leavesData,
                         borderColor: 'rgb(255, 99, 99)', // Rouge
                         backgroundColor: 'rgba(255, 99, 99, 0.3)',
@@ -601,6 +618,7 @@ class StatsGenerator {
                         pointBorderColor: 'rgb(255, 99, 99)',
                         pointHoverRadius: 6,
                         pointHoverBackgroundColor: 'rgb(255, 99, 99)',
+                        yAxisID: 'y-events', // Axe Y pour les événements
                     }
                 ]
             },
@@ -644,22 +662,38 @@ class StatsGenerator {
                             display: false
                         }
                     },
-                    y: {
+                    'y-total': {
                         type: 'linear',
                         display: true,
                         position: 'left',
+                        grid: {
+                            color: 'rgba(99, 132, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: 'rgb(99, 132, 255)',
+                            font: {
+                                size: 12
+                            },
+                            stepSize: 1,
+                            precision: 0
+                        }
+                    },
+                    'y-events': {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
                         beginAtZero: true,
                         grid: {
-                            color: 'rgba(255, 255, 255, 0.1)',
-                            drawBorder: false
+                            display: false
                         },
                         ticks: {
                             color: '#b9bbbe',
                             font: {
                                 size: 12
                             },
-                            stepSize: 1, // Forcer les valeurs entières
-                            precision: 0 // Pas de décimales
+                            stepSize: 1,
+                            precision: 0
                         }
                     }
                 }
