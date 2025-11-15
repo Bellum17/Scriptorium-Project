@@ -8,33 +8,7 @@ class AIManager {
         this.db = database;
         
         // Instructions par défaut pour l'IA
-        this.defaultInstructions = `Tu es Scriptorium, un assistant IA pour un serveur Discord de jeu de rôle littéraire.
-
-TES CAPACITÉS :
-• Analyser le serveur Discord (salons, membres, bots présents, rôles)
-• Analyser les messages et tendances du serveur
-• Répondre à des questions sur la configuration du serveur
-• Aider les joueurs avec leurs écrits et histoires
-• Conseiller sur les stratégies de jeu et les méchaniques
-• Analyser les décisions et les erreurs de jeu
-
-TON RÔLE :
-Tu dois être un assistant cultivé, professionnel et créatif.
-Tu aides avec le roleplay littéraire, les stratégies de jeu, et l'analyse de serveur.
-
-RÈGLES DE FORMATAGE :
-• Sépare les idées avec des tirets et sauts de ligne
-• Utilise des listes numérotées pour les étapes
-• Met en gras les points importants
-• Évite les pavés de texte, préfère les sections courtes
-• Aère ta réponse avec des espaces
-
-EXEMPLE DE FORMAT BON :
-Voici les étapes :
-1. **Première étape** - Brève description
-2. **Deuxième étape** - Brève description
-
-Non pas : Un long pavé de texte qui mélange tout.`;
+        this.defaultInstructions = "Tu es Scriptorium, un assistant RP littéraire élégant et cultivé. Tu aides les joueurs dans leurs écrits et histoires avec un ton professionnel et créatif.";
     }
 
     // Définir les instructions système pour un serveur
@@ -98,39 +72,11 @@ Non pas : Un long pavé de texte qui mélange tout.`;
                 }
             );
 
-            // Nettoyer la réponse en enlevant les tokens spéciaux
-            let content = response.data.choices[0].message.content;
+            // Nettoyer la réponse (retirer les tokens spéciaux comme <s>)
+            let responseText = response.data.choices[0].message.content;
+            responseText = responseText.replace(/^<s>\s*/, '').trim();
             
-            if (!content || content.trim().length === 0) {
-                console.warn('⚠️ Réponse IA vide reçue');
-                throw new Error('L\'IA a renvoyé une réponse vide.');
-            }
-            
-            console.log('🔍 Réponse brute (premiers 100 chars):', content.substring(0, 100));
-            
-            // Nettoyer les tokens au début (avant le contenu réel)
-            content = content.replace(/^[\s<>[\]/INSTOUT]*/, '');
-            
-            // Nettoyer les tokens à la fin (après le contenu réel)
-            content = content.replace(/[\s<>[\]/INSTOUT]*$/, '');
-            
-            // Enlever les tokens spéciaux isolés (mais pas si c'est du texte normal)
-            // Remplacer <s>, </s>, [INST], [/INST], [OUT] par rien
-            content = content.replace(/<s>|<\/s>|\[INST\]|\[\/INST\]|\[OUT\]/gi, ' ');
-            
-            // Nettoyer les espaces multiples et trim
-            content = content.replace(/\s+/g, ' ').trim();
-            
-            console.log('🧹 Réponse nettoyée (premiers 100 chars):', content.substring(0, 100));
-            
-            // Vérifier qu'il reste du contenu après nettoyage
-            if (!content || content.length === 0) {
-                console.warn('⚠️ Réponse vide après nettoyage');
-                throw new Error('La réponse de l\'IA est vide après nettoyage.');
-            }
-            
-            console.log('✅ Réponse valide, longueur:', content.length);
-            return content;
+            return responseText;
         } catch (error) {
             console.error('❌ Erreur lors de la requête IA:', error.response?.data || error.message);
             throw new Error('Impossible de contacter l\'IA. Vérifiez votre connexion et votre clé API.');

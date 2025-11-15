@@ -692,6 +692,12 @@ async function handleAIChat(interaction) {
             return;
         }
 
+        // Limiter la longueur de la réponse pour Discord (max 4096 caractères pour une description)
+        let finalResponse = response;
+        if (response.length > 3900) {
+            finalResponse = response.substring(0, 3900) + '\n\n**[Réponse tronquée - trop longue pour un seul message]**';
+        }
+
         // Créer un embed pour la réponse
         const embed = new EmbedBuilder()
             .setColor(0x729bb6)
@@ -699,7 +705,7 @@ async function handleAIChat(interaction) {
                 name: 'Scriptorium', 
                 iconURL: client.user.displayAvatarURL() 
             })
-            .setDescription(response)
+            .setDescription(finalResponse)
             .setFooter({ 
                 text: `Demande de ${interaction.user.username}`,
                 iconURL: interaction.user.displayAvatarURL()
@@ -1178,6 +1184,12 @@ client.on(Events.MessageCreate, async (message) => {
                         console.log('🤖 Réponse IA reçue, longueur:', response?.length || 0);
                         
                         if (response && response.trim().length > 0) {
+                            // Limiter la longueur de la réponse pour Discord (max 4096 caractères pour une description)
+                            let finalResponse = response;
+                            if (response.length > 3900) {
+                                finalResponse = response.substring(0, 3900) + '\n\n**[Réponse tronquée - trop longue]**';
+                            }
+                            
                             // Créer un embed pour la réponse
                             const embed = new EmbedBuilder()
                                 .setColor(0x729bb6)
@@ -1185,7 +1197,7 @@ client.on(Events.MessageCreate, async (message) => {
                                     name: 'Scriptorium', 
                                     iconURL: client.user.displayAvatarURL() 
                                 })
-                                .setDescription(response)
+                                .setDescription(finalResponse)
                                 .setFooter({ 
                                     text: `Réponse à ${message.author.username}`,
                                     iconURL: message.author.displayAvatarURL()
