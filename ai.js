@@ -145,7 +145,7 @@ class AIManager {
             const response = await axios.post(
                 this.baseUrl,
                 {
-                    model: 'openai/gpt-3.5-turbo', // Modèle fiable et rapide
+                    model: 'nousresearch/nous-hermes-2-mistral-7b-dpo', // Modèle fiable et gratuit
                     messages: messages,
                     temperature: 0.7,
                     max_tokens: 1000
