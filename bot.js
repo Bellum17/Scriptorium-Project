@@ -675,6 +675,14 @@ async function handleAIChat(interaction) {
         // Envoyer le message à l'IA avec le contexte du serveur et de l'interaction
         const response = await ai.chat(guildId, userMessage, [], interaction);
 
+        // Vérifier que la réponse n'est pas vide
+        if (!response || response.trim().length === 0) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> L\'IA n\'a pas pu générer de réponse. Veuillez réessayer.'
+            });
+            return;
+        }
+
         // Créer un embed pour la réponse
         const embed = new EmbedBuilder()
             .setColor(0x729bb6)

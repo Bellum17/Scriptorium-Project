@@ -166,9 +166,15 @@ class AIManager {
                 }
             );
 
-            // Nettoyer la réponse (retirer les tokens spéciaux comme <s>)
+            // Nettoyer la réponse (retirer les tokens spéciaux Mistral)
             let responseText = response.data.choices[0].message.content;
-            responseText = responseText.replace(/^<s>\s*/, '').trim();
+            // Retirer les tokens spéciaux Mistral comme <s>, </s>, [INST], [/INST]
+            responseText = responseText
+                .replace(/^<s>\s*/, '')
+                .replace(/\s*<\/s>$/, '')
+                .replace(/^\[INST\]\s*/, '')
+                .replace(/\s*\[\/INST\]$/, '')
+                .trim();
             
             return responseText;
         } catch (error) {
