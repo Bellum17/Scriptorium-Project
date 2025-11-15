@@ -10,6 +10,7 @@ const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
 const StatsGenerator = require('./stats');
+const AIManager = require('./ai');
 
 // Configuration du serveur Express pour Railway
 const app = express();
@@ -55,6 +56,9 @@ const db = new DatabaseManager();
 
 // Initialiser le générateur de statistiques
 const statsGen = new StatsGenerator();
+
+// Initialiser le gestionnaire d'IA
+const ai = new AIManager();
 
 // Cache des webhooks par channel
 const webhookCache = new Map();
@@ -151,6 +155,24 @@ async function registerCommands(client) {
                 subcommand
                     .setName('membres')
                     .setDescription('Statistiques des arrivées et départs de membres')
+            ),
+        new SlashCommandBuilder()
+            .setName('ia')
+            .setDescription('Discuter avec l\'IA Scriptorium')
+            .addStringOption(option =>
+                option
+                    .setName('message')
+                    .setDescription('Votre message à l\'IA')
+                    .setRequired(true)
+            ),
+        new SlashCommandBuilder()
+            .setName('instruction')
+            .setDescription('Modifier les instructions de l\'IA pour ce serveur')
+            .addStringOption(option =>
+                option
+                    .setName('instructions')
+                    .setDescription('Nouvelles instructions système pour l\'IA')
+                    .setRequired(true)
             )
     ];
 
@@ -213,6 +235,10 @@ async function handleCommand(interaction) {
                     await showMemberStats(interaction);
                     break;
             }
+        } else if (interaction.commandName === 'ia') {
+            await handleAIChat(interaction);
+        } else if (interaction.commandName === 'instruction') {
+            await handleSetInstructions(interaction);
         }
     } catch (error) {
         console.error('❌ Erreur lors de l\'exécution de la commande:', error);
@@ -600,6 +626,74 @@ async function showMemberStats(interaction) {
         console.error('❌ Erreur lors de la génération des statistiques membres:', error);
         await interaction.editReply({
             content: `<:DO_Cross:1436967855273803826> Erreur lors de la génération des statistiques: ${error.message}`
+        });
+    }
+}
+
+// Gérer une conversation avec l'IA
+async function handleAIChat(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const userMessage = interaction.options.getString('message');
+        
+        // Envoyer le message à l'IA
+        const response = await ai.chat(interaction.guildId, userMessage);
+
+        // Créer un embed pour la réponse
+        const embed = new EmbedBuilder()
+            .setColor(0x729bb6)
+            .setAuthor({ 
+                name: 'Scriptorium', 
+                iconURL: client.user.displayAvatarURL() 
+            })
+            .setDescription(response)
+            .setFooter({ 
+                text: `Demande de ${interaction.user.username}`,
+                iconURL: interaction.user.displayAvatarURL()
+            })
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la discussion avec l\'IA:', error);
+        await interaction.editReply({
+            content: `<:DO_Cross:1436967855273803826> ${error.message}`
+        });
+    }
+}
+
+// Modifier les instructions de l'IA
+async function handleSetInstructions(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+        const instructions = interaction.options.getString('instructions');
+        
+        // Vérifier les permissions (admin uniquement)
+        if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> Seuls les administrateurs peuvent modifier les instructions de l\'IA.'
+            });
+            return;
+        }
+
+        // Mettre à jour les instructions
+        ai.setInstructions(interaction.guildId, instructions);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x729bb6)
+            .setTitle('<:DO_Check:1436967853801869322> Instructions mises à jour !')
+            .setDescription(`Les nouvelles instructions pour **Scriptorium** ont été enregistrées.\n\n**Instructions :**\n> ${instructions}`)
+            .setFooter({ text: 'L\'IA utilisera ces instructions pour toutes les futures conversations.' });
+
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la modification des instructions:', error);
+        await interaction.editReply({
+            content: `<:DO_Cross:1436967855273803826> ${error.message}`
         });
     }
 }
