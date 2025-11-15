@@ -72,7 +72,11 @@ class AIManager {
                 }
             );
 
-            return response.data.choices[0].message.content;
+            // Nettoyer la réponse en enlevant les tokens spéciaux
+            let content = response.data.choices[0].message.content;
+            content = content.replace(/^<s>\s*/i, '').replace(/<\/s>$/i, '').trim();
+            
+            return content;
         } catch (error) {
             console.error('❌ Erreur lors de la requête IA:', error.response?.data || error.message);
             throw new Error('Impossible de contacter l\'IA. Vérifiez votre connexion et votre clé API.');
