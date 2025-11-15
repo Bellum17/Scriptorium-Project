@@ -10,6 +10,7 @@ const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
 const StatsGenerator = require('./stats');
+const AIManager = require('./ai');
 
 // Configuration du serveur Express pour Railway
 const app = express();
@@ -55,6 +56,9 @@ const db = new DatabaseManager();
 
 // Initialiser le générateur de statistiques
 const statsGen = new StatsGenerator();
+
+// Initialiser le gestionnaire d'IA
+const aiManager = new AIManager();
 
 // Cache des webhooks par channel
 const webhookCache = new Map();
@@ -151,6 +155,30 @@ async function registerCommands(client) {
                 subcommand
                     .setName('membres')
                     .setDescription('Statistiques des arrivées et départs de membres')
+            ),
+        new SlashCommandBuilder()
+            .setName('instruction')
+            .setDescription('Gérer les instructions de l\'IA Scriptorium')
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('définir')
+                    .setDescription('Définir l\'instruction système de l\'IA')
+                    .addStringOption(option =>
+                        option
+                            .setName('texte')
+                            .setDescription('L\'instruction pour l\'IA (son comportement, sa personnalité...)')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('voir')
+                    .setDescription('Voir l\'instruction actuelle de l\'IA')
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('réinitialiser')
+                    .setDescription('Réinitialiser l\'instruction par défaut')
             )
     ];
 
@@ -211,6 +239,20 @@ async function handleCommand(interaction) {
                     break;
                 case 'membres':
                     await showMemberStats(interaction);
+                    break;
+            }
+        } else if (interaction.commandName === 'instruction') {
+            const subcommand = interaction.options.getSubcommand();
+            
+            switch (subcommand) {
+                case 'définir':
+                    await setAIInstruction(interaction);
+                    break;
+                case 'voir':
+                    await viewAIInstruction(interaction);
+                    break;
+                case 'réinitialiser':
+                    await resetAIInstruction(interaction);
                     break;
             }
         }
@@ -604,6 +646,81 @@ async function showMemberStats(interaction) {
     }
 }
 
+// Définir l'instruction de l'IA
+async function setAIInstruction(interaction) {
+    // Vérifier les permissions (administrateur uniquement)
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({
+            content: '<:DO_Cross:1436967855273803826> Vous devez être administrateur pour modifier l\'instruction de l\'IA.',
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    const instruction = interaction.options.getString('texte');
+    
+    try {
+        aiManager.setInstruction(interaction.guildId, instruction);
+        
+        await interaction.reply({
+            content: `✅ Instruction de l'IA mise à jour !\n\n**Nouvelle instruction :**\n\`\`\`\n${instruction}\n\`\`\``,
+            flags: MessageFlags.Ephemeral
+        });
+    } catch (error) {
+        console.error('❌ Erreur lors de la définition de l\'instruction:', error);
+        await interaction.reply({
+            content: '<:DO_Cross:1436967855273803826> Erreur lors de la mise à jour de l\'instruction.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
+// Voir l'instruction actuelle de l'IA
+async function viewAIInstruction(interaction) {
+    try {
+        const instruction = aiManager.getInstruction(interaction.guildId);
+        
+        await interaction.reply({
+            content: `📝 **Instruction actuelle de l'IA :**\n\`\`\`\n${instruction}\n\`\`\``,
+            flags: MessageFlags.Ephemeral
+        });
+    } catch (error) {
+        console.error('❌ Erreur lors de la récupération de l\'instruction:', error);
+        await interaction.reply({
+            content: '<:DO_Cross:1436967855273803826> Erreur lors de la récupération de l\'instruction.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
+// Réinitialiser l'instruction de l'IA
+async function resetAIInstruction(interaction) {
+    // Vérifier les permissions (administrateur uniquement)
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({
+            content: '<:DO_Cross:1436967855273803826> Vous devez être administrateur pour réinitialiser l\'instruction de l\'IA.',
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    try {
+        aiManager.clearInstruction(interaction.guildId);
+        const defaultInstruction = aiManager.getInstruction(interaction.guildId);
+        
+        await interaction.reply({
+            content: `✅ Instruction réinitialisée !\n\n**Instruction par défaut :**\n\`\`\`\n${defaultInstruction}\n\`\`\``,
+            flags: MessageFlags.Ephemeral
+        });
+    } catch (error) {
+        console.error('❌ Erreur lors de la réinitialisation de l\'instruction:', error);
+        await interaction.reply({
+            content: '<:DO_Cross:1436967855273803826> Erreur lors de la réinitialisation de l\'instruction.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
 // Gestionnaire de menu déroulant
 async function handleSelectMenu(interaction) {
     if (interaction.customId === 'stats_period') {
@@ -890,7 +1007,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     }
 });
 
-// Gestion des messages pour le proxying
+// Gestion des messages pour le proxying et l'IA
 client.on(Events.MessageCreate, async (message) => {
     // Ignorer les messages du bot lui-même
     if (message.author.id === client.user.id) return;
@@ -911,8 +1028,14 @@ client.on(Events.MessageCreate, async (message) => {
             );
         }
 
-        // Ignorer les messages des webhooks pour le proxying
+        // Ignorer les messages des webhooks pour le reste
         if (message.webhookId || message.author.bot) return;
+
+        // Vérifier si le message commence par "Scriptorium"
+        if (message.content.toLowerCase().startsWith('scriptorium')) {
+            await handleAIMessage(message);
+            return; // Ne pas continuer vers le proxying
+        }
 
         // Chercher un personnage correspondant au prefix
         const character = await findCharacterByPrefix(message);
@@ -924,6 +1047,45 @@ client.on(Events.MessageCreate, async (message) => {
         console.error('❌ Erreur lors du proxying:', error);
     }
 });
+
+// Gérer un message destiné à l'IA
+async function handleAIMessage(message) {
+    try {
+        // Retirer "Scriptorium" du début du message
+        const userMessage = message.content.replace(/^scriptorium\s*/i, '').trim();
+        
+        if (!userMessage) {
+            await message.reply('👋 Bonjour ! Je suis Scriptorium, votre assistant IA. Posez-moi une question !');
+            return;
+        }
+
+        // Envoyer un indicateur de saisie
+        await message.channel.sendTyping();
+
+        // Générer la réponse avec l'IA
+        const response = await aiManager.generateResponse(
+            message.guildId,
+            userMessage,
+            message.author.username
+        );
+
+        // Diviser la réponse si elle est trop longue (limite Discord : 2000 caractères)
+        if (response.length > 2000) {
+            const chunks = response.match(/.{1,1900}/g) || [];
+            for (const chunk of chunks) {
+                await message.reply(chunk);
+            }
+        } else {
+            await message.reply(response);
+        }
+
+        console.log(`🤖 Réponse IA envoyée à ${message.author.tag} dans ${message.guild.name}`);
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la réponse IA:', error);
+        await message.reply('❌ Désolé, je ne peux pas répondre pour le moment. Réessayez dans quelques instants.');
+    }
+}
 
 // Trouver un personnage par son prefix dans le message
 async function findCharacterByPrefix(message) {
