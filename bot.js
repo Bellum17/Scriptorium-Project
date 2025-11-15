@@ -1090,10 +1090,36 @@ async function getServerInfo(guild) {
         const userCount = memberCount - botCount;
         
         // Récupérer les salons par type
-        const textChannels = guild.channels.cache.filter(c => c.isTextBased()).size;
-        const voiceChannels = guild.channels.cache.filter(c => c.isVoiceBased()).size;
+        const textChannels = guild.channels.cache.filter(c => c.isTextBased());
+        const voiceChannels = guild.channels.cache.filter(c => c.isVoiceBased());
         
-        return `📊 Serveur: ${guild.name} | 👥 ${memberCount} membres (${userCount} users, ${botCount} bots) | 📝 ${textChannels} salons texte | 🎙️ ${voiceChannels} vocaux | 🏷️ ${roleCount} rôles`;
+        // Créer une liste des salons texte avec leurs mentions
+        const textChannelsList = textChannels
+            .map(c => `<#${c.id}>`)
+            .join(' ')
+            .substring(0, 500); // Limiter à 500 caractères
+        
+        // Créer une liste des salons vocaux
+        const voiceChannelsList = voiceChannels
+            .map(c => c.name)
+            .join(', ')
+            .substring(0, 200); // Limiter à 200 caractères
+        
+        // Récupérer les rôles importants (non @everyone)
+        const importantRoles = guild.roles.cache
+            .filter(r => r.name !== '@everyone')
+            .sort((a, b) => b.position - a.position)
+            .first(10)
+            .map(r => `<@&${r.id}>`)
+            .join(' ');
+        
+        const info = `📊 Serveur: ${guild.name} | 👥 ${memberCount} membres (${userCount} users, ${botCount} bots) | 📝 ${textChannels.size} salons texte | 🎙️ ${voiceChannels.size} vocaux | 🏷️ ${roleCount} rôles
+
+📋 Salons texte : ${textChannelsList}
+${voiceChannels.size > 0 ? `🎙️ Salons vocaux : ${voiceChannelsList}\n` : ''}
+🏷️ Rôles : ${importantRoles || 'Aucun rôle'}`;
+        
+        return info;
     } catch (error) {
         console.error('❌ Erreur lors de la récupération des infos serveur:', error);
         return '';
