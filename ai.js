@@ -79,8 +79,18 @@ class AIManager {
                 throw new Error('L\'IA a renvoyé une réponse vide.');
             }
             
-            // Enlever les tokens spéciaux du modèle (seulement au début et à la fin)
-            content = content.replace(/^<s>\s*/i, '').replace(/\s*<\/s>$/i, '').trim();
+            // Enlever tous les tokens spéciaux du modèle
+            // Tokens au début : <s>, [INST], [OUT], etc.
+            content = content.replace(/^(<s>|\[INST\]|\[OUT\]|\[\/INST\]|\s)+/gi, '');
+            
+            // Tokens à la fin : </s>, [/INST], etc.
+            content = content.replace(/(<\/s>|\[\/INST\]|\[OUT\]|\s)+$/gi, '');
+            
+            // Enlever les tokens au milieu si présents
+            content = content.replace(/\[INST\]/gi, '').replace(/\[\/INST\]/gi, '').replace(/\[OUT\]/gi, '');
+            
+            // Nettoyer les espaces multiples et trim
+            content = content.replace(/\s+/g, ' ').trim();
             
             // Vérifier qu'il reste du contenu après nettoyage
             if (!content || content.length === 0) {
