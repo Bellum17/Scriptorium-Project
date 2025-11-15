@@ -672,8 +672,25 @@ async function handleAIChat(interaction) {
         }
 
         const userMessage = interaction.options.getString('message');
+        
+        // Vérifier que le message n'est pas vide
+        if (!userMessage || userMessage.trim().length === 0) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> Votre message ne peut pas être vide.'
+            });
+            return;
+        }
+        
         // Envoyer le message à l'IA
         const response = await ai.chat(guildId, userMessage);
+
+        // Vérifier que la réponse n'est pas vide
+        if (!response || response.trim().length === 0) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> L\'IA a renvoyé une réponse vide. Veuillez réessayer.'
+            });
+            return;
+        }
 
         // Créer un embed pour la réponse
         const embed = new EmbedBuilder()
@@ -1059,7 +1076,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     }
 });
 
-// Gestion des messages pour le proxying
+// Gestion des messages pour le proxying et l'IA
 client.on(Events.MessageCreate, async (message) => {
     // Ignorer les messages du bot lui-même
     if (message.author.id === client.user.id) return;
@@ -1078,6 +1095,37 @@ client.on(Events.MessageCreate, async (message) => {
                 false,
                 null
             );
+        }
+
+        // Vérifier si c'est une réponse à un message du bot (IA)
+        if (message.reference && message.mentions.has(client.user.id)) {
+            try {
+                const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
+                
+                // Vérifier si c'est une réponse à un message du bot
+                if (repliedMessage.author.id === client.user.id) {
+                    // Vérifier le salon autorisé
+                    const allowedChannelId = await ai.getAllowedChannel(message.guildId);
+                    if (!allowedChannelId || allowedChannelId === message.channelId) {
+                        // Envoyer un indicateur de frappe
+                        await message.channel.sendTyping();
+                        
+                        // Envoyer le message à l'IA
+                        const response = await ai.chat(message.guildId, message.content);
+                        
+                        if (response && response.trim().length > 0) {
+                            // Répondre au message
+                            await message.reply({
+                                content: response,
+                                allowedMentions: { repliedUser: true }
+                            });
+                        }
+                    }
+                    return;
+                }
+            } catch (error) {
+                console.error('❌ Erreur lors de la réponse IA:', error);
+            }
         }
 
         // Ignorer les messages des webhooks pour le proxying

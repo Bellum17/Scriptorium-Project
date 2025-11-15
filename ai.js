@@ -74,7 +74,18 @@ class AIManager {
 
             // Nettoyer la réponse en enlevant les tokens spéciaux
             let content = response.data.choices[0].message.content;
-            content = content.replace(/^<s>\s*/i, '').replace(/<\/s>$/i, '').trim();
+            
+            if (!content || content.trim().length === 0) {
+                throw new Error('L\'IA a renvoyé une réponse vide.');
+            }
+            
+            // Enlever les tokens spéciaux du modèle (seulement au début et à la fin)
+            content = content.replace(/^<s>\s*/i, '').replace(/\s*<\/s>$/i, '').trim();
+            
+            // Vérifier qu'il reste du contenu après nettoyage
+            if (!content || content.length === 0) {
+                throw new Error('La réponse de l\'IA est vide après nettoyage.');
+            }
             
             return content;
         } catch (error) {
