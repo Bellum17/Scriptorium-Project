@@ -1076,6 +1076,38 @@ client.on(Events.GuildMemberRemove, async (member) => {
     }
 });
 
+// Fonction pour obtenir les informations du serveur
+async function getServerInfo(guild) {
+    try {
+        // Récupérer les informations basiques
+        const memberCount = guild.memberCount;
+        const channelCount = guild.channels.cache.size;
+        const roleCount = guild.roles.cache.size;
+        
+        // Compter les bots
+        const members = await guild.members.fetch();
+        const botCount = members.filter(m => m.user.bot).size;
+        const userCount = memberCount - botCount;
+        
+        // Récupérer les salons par type
+        const textChannels = guild.channels.cache.filter(c => c.isTextBased()).size;
+        const voiceChannels = guild.channels.cache.filter(c => c.isVoiceBased()).size;
+        
+        return `
+📊 INFORMATIONS DU SERVEUR :
+• Nom : ${guild.name}
+• Membres totaux : ${memberCount}
+• Utilisateurs : ${userCount}
+• Bots : ${botCount}
+• Salons texte : ${textChannels}
+• Salons vocaux : ${voiceChannels}
+• Rôles : ${roleCount}`;
+    } catch (error) {
+        console.error('❌ Erreur lors de la récupération des infos serveur:', error);
+        return '';
+    }
+}
+
 // Gestion des messages pour le proxying et l'IA
 client.on(Events.MessageCreate, async (message) => {
     // Ignorer les messages du bot lui-même
@@ -1118,8 +1150,12 @@ client.on(Events.MessageCreate, async (message) => {
                         // Envoyer un indicateur de frappe
                         await message.channel.sendTyping();
                         
-                        // Envoyer le message à l'IA
-                        const response = await ai.chat(message.guildId, message.content);
+                        // Obtenir les informations du serveur
+                        const serverInfo = await getServerInfo(message.guild);
+                        
+                        // Envoyer le message à l'IA avec les infos du serveur
+                        const messageWithContext = `${serverInfo}\n\nQuestion : ${message.content}`;
+                        const response = await ai.chat(message.guildId, messageWithContext);
                         console.log('🤖 Réponse IA reçue, longueur:', response?.length || 0);
                         
                         if (response && response.trim().length > 0) {
