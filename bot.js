@@ -1114,11 +1114,22 @@ client.on(Events.MessageCreate, async (message) => {
                         const response = await ai.chat(message.guildId, message.content);
                         
                         if (response && response.trim().length > 0) {
-                            // Répondre au message
-                            await message.reply({
-                                content: response,
-                                allowedMentions: { repliedUser: true }
-                            });
+                            // Créer un embed pour la réponse
+                            const embed = new EmbedBuilder()
+                                .setColor(0x729bb6)
+                                .setAuthor({ 
+                                    name: 'Scriptorium', 
+                                    iconURL: client.user.displayAvatarURL() 
+                                })
+                                .setDescription(response)
+                                .setFooter({ 
+                                    text: `Réponse à ${message.author.username}`,
+                                    iconURL: message.author.displayAvatarURL()
+                                })
+                                .setTimestamp();
+
+                            // Répondre au message avec l'embed
+                            await message.reply({ embeds: [embed] });
                         }
                     }
                     return;
