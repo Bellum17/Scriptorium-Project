@@ -16,6 +16,7 @@ class AIManager {
         if (!this.apiKey) {
             console.warn('⚠️ OPENROUTER_API_KEY non définie. L\'IA ne fonctionnera pas.');
         }
+        console.log('OPENROUTER_API_KEY:', this.apiKey ? 'définie' : 'absente');
     }
 
     // Définir l'instruction système pour un serveur
