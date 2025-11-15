@@ -145,7 +145,7 @@ class AIManager {
             const response = await axios.post(
                 this.baseUrl,
                 {
-                    model: 'mistralai/mistral-7b-instruct', // Modèle gratuit Mistral
+                    model: 'mistralai/mistral-8x7b-instruct', // Modèle gratuit performant
                     messages: messages,
                     temperature: 0.7,
                     max_tokens: 1000
@@ -184,15 +184,16 @@ class AIManager {
         }
     }
 
-    // Modèles gratuits disponibles sur OpenRouter
-    static getFreeModels() {
+    // Modèles disponibles sur OpenRouter
+    static getAvailableModels() {
         return [
-            'meta-llama/llama-3.1-8b-instruct:free', // Modèle stable et rapide
+            'meta-llama/llama-2-70b-chat', // Stable et fiable
+            'meta-llama/llama-3.1-8b-instruct:free',
             'meta-llama/llama-3.1-70b-instruct:free',
             'google/gemma-2-9b-it:free',
             'microsoft/phi-3-medium-128k-instruct:free',
-            'mistralai/mistral-7b-instruct:free',
-            'nousresearch/hermes-3-llama-3.1-405b:free' // Puissant mais peut être rate-limited
+            'mistralai/mistral-7b-instruct',
+            'nousresearch/hermes-3-llama-3.1-405b:free'
         ];
     }
 }
