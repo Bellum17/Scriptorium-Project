@@ -3,7 +3,7 @@ const axios = require('axios');
 
 class AIManager {
     constructor() {
-        this.apiKey = process.env.OPENROUTER_API_KEY || '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';
+        this.apiKey = process.env.OPENROUTER_API_KEY;
         this.apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
         
         // Modèle gratuit sur OpenRouter (Mistral 7B)
@@ -11,6 +11,11 @@ class AIManager {
         
         // Stockage des instructions par serveur
         this.instructions = new Map();
+        
+        // Vérifier que la clé API est présente
+        if (!this.apiKey) {
+            console.warn('⚠️ OPENROUTER_API_KEY non définie. L\'IA ne fonctionnera pas.');
+        }
     }
 
     // Définir l'instruction système pour un serveur
@@ -32,6 +37,11 @@ class AIManager {
 
     // Générer une réponse avec l'IA
     async generateResponse(guildId, userMessage, userName = 'Utilisateur') {
+        // Vérifier que la clé API est configurée
+        if (!this.apiKey) {
+            throw new Error('L\'IA n\'est pas configurée. Veuillez définir la variable OPENROUTER_API_KEY.');
+        }
+
         try {
             const systemInstruction = this.getInstruction(guildId);
 
