@@ -145,7 +145,7 @@ class AIManager {
             const response = await axios.post(
                 this.baseUrl,
                 {
-                    model: 'nousresearch/nous-hermes-2-mistral-7b-dpo', // Modèle fiable et gratuit
+                    model: 'nousresearch/hermes-3-llama-3.1-405b:free', // Modèle puissant gratuit
                     messages: messages,
                     temperature: 0.7,
                     max_tokens: 1000
