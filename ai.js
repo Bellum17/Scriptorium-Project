@@ -113,8 +113,8 @@ class AIManager {
 
         // Liste des modèles à essayer dans l'ordre
         const models = [
-            'nousresearch/hermes-3-llama-3.1-405b:free', // Modèle puissant gratuit
-            'mistralai/mistral-7b-instruct:free'        // Fallback Mistral 7B
+            'mistralai/mistral-7b-instruct:free',       // Mistral 7B principal
+            'nousresearch/hermes-3-llama-3.1-405b:free' // Hermes 3 en fallback
         ];
 
         try {
