@@ -10,6 +10,7 @@ class AIManager {
         this.systemInstructions = {
             default: "Tu es Scriptorium, un assistant RP littéraire élégant et cultivé. Tu aides les joueurs dans leurs écrits et histoires avec un ton professionnel et créatif."
         };
+        this.allowedChannels = {}; // guildId -> channelId
     }
 
     // Définir les instructions système pour un serveur
@@ -20,6 +21,14 @@ class AIManager {
     // Récupérer les instructions pour un serveur
     getInstructions(guildId) {
         return this.systemInstructions[guildId] || this.systemInstructions.default;
+    }
+    
+    setAllowedChannel(guildId, channelId) {
+        this.allowedChannels[guildId] = channelId;
+    }
+    
+    getAllowedChannel(guildId) {
+        return this.allowedChannels[guildId] || null;
     }
 
     // Envoyer une requête à l'IA

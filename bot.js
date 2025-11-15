@@ -159,11 +159,27 @@ async function registerCommands(client) {
         new SlashCommandBuilder()
             .setName('ia')
             .setDescription('Discuter avec l\'IA Scriptorium')
-            .addStringOption(option =>
-                option
+            .addSubcommand(subcommand =>
+                subcommand
                     .setName('message')
-                    .setDescription('Votre message à l\'IA')
-                    .setRequired(true)
+                    .setDescription('Envoyer un message à l\'IA')
+                    .addStringOption(option =>
+                        option
+                            .setName('message')
+                            .setDescription('Votre message à l\'IA')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('salon')
+                    .setDescription('Définir le salon autorisé pour l\'IA')
+                    .addChannelOption(option =>
+                        option
+                            .setName('salon')
+                            .setDescription('Salon où l\'IA sera autorisée')
+                            .setRequired(true)
+                    )
             ),
         new SlashCommandBuilder()
             .setName('instruction')
@@ -206,7 +222,6 @@ async function handleCommand(interaction) {
     try {
         if (interaction.commandName === 'personnage') {
             const subcommand = interaction.options.getSubcommand();
-            
             switch (subcommand) {
                 case 'créer':
                     await showCreateCharacterModal(interaction);
@@ -223,7 +238,6 @@ async function handleCommand(interaction) {
             }
         } else if (interaction.commandName === 'statistiques') {
             const subcommand = interaction.options.getSubcommand();
-            
             switch (subcommand) {
                 case 'messages':
                     await showServerStats(interaction);
@@ -236,7 +250,15 @@ async function handleCommand(interaction) {
                     break;
             }
         } else if (interaction.commandName === 'ia') {
-            await handleAIChat(interaction);
+            const subcommand = interaction.options.getSubcommand();
+            switch (subcommand) {
+                case 'message':
+                    await handleAIChat(interaction);
+                    break;
+                case 'salon':
+                    await handleSetAIChannel(interaction);
+                    break;
+            }
         } else if (interaction.commandName === 'instruction') {
             await handleSetInstructions(interaction);
         }
@@ -635,10 +657,20 @@ async function handleAIChat(interaction) {
     await interaction.deferReply();
 
     try {
+        // Vérifier si le salon est autorisé
+        const guildId = interaction.guildId;
+        const channelId = interaction.channelId;
+        const allowedChannelId = await ai.getAllowedChannel(guildId);
+        if (allowedChannelId && allowedChannelId !== channelId) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> La commande /ia n\'est autorisée que dans le salon configuré par un administrateur.'
+            });
+            return;
+        }
+
         const userMessage = interaction.options.getString('message');
-        
         // Envoyer le message à l'IA
-        const response = await ai.chat(interaction.guildId, userMessage);
+        const response = await ai.chat(guildId, userMessage);
 
         // Créer un embed pour la réponse
         const embed = new EmbedBuilder()
@@ -669,8 +701,6 @@ async function handleSetInstructions(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-        const instructions = interaction.options.getString('instructions');
-        
         // Vérifier les permissions (admin uniquement)
         if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
             await interaction.editReply({
@@ -679,6 +709,7 @@ async function handleSetInstructions(interaction) {
             return;
         }
 
+        const instructions = interaction.options.getString('instructions');
         // Mettre à jour les instructions
         ai.setInstructions(interaction.guildId, instructions);
 
@@ -692,6 +723,47 @@ async function handleSetInstructions(interaction) {
 
     } catch (error) {
         console.error('❌ Erreur lors de la modification des instructions:', error);
+        await interaction.editReply({
+            content: `<:DO_Cross:1436967855273803826> ${error.message}`
+        });
+    }
+
+}
+
+// Handler pour la sous-commande /ia salon (admin only)
+async function handleSetAIChannel(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+        // Vérifier les permissions (admin uniquement)
+        if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> Seuls les administrateurs peuvent définir le salon autorisé pour l\'IA.'
+            });
+            return;
+        }
+
+        const channel = interaction.options.getChannel('salon');
+        if (!channel || !channel.isTextBased()) {
+            await interaction.editReply({
+                content: '<:DO_Cross:1436967855273803826> Veuillez sélectionner un salon textuel valide.'
+            });
+            return;
+        }
+
+        // Enregistrer le salon autorisé dans l'AIManager
+        ai.setAllowedChannel(interaction.guildId, channel.id);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x729bb6)
+            .setTitle('<:DO_Check:1436967853801869322> Salon IA défini !')
+            .setDescription(`La commande **/ia** ne sera utilisable que dans le salon <#${channel.id}>.`)
+            .setFooter({ text: 'Seuls les administrateurs peuvent modifier ce paramètre.' });
+
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la définition du salon IA:', error);
         await interaction.editReply({
             content: `<:DO_Cross:1436967855273803826> ${error.message}`
         });
