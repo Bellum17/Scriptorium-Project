@@ -95,6 +95,18 @@ class DatabaseManager {
                 )
             `);
 
+            // Créer la table des paramètres d'IA par serveur
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS ai_settings (
+                    id SERIAL PRIMARY KEY,
+                    guild_id VARCHAR(255) NOT NULL UNIQUE,
+                    instructions TEXT,
+                    allowed_channel_id VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+
             // Index pour optimiser les requêtes de stats membres
             await this.pool.query(`
                 CREATE INDEX IF NOT EXISTS idx_member_stats_guild_timestamp 
@@ -532,6 +544,37 @@ class DatabaseManager {
 
         const result = await this.pool.query(query, [guildId]);
         return result.rows;
+    }
+
+    // Obtenir les paramètres d'IA pour un serveur
+    async getAISettings(guildId) {
+        const result = await this.pool.query(
+            'SELECT * FROM ai_settings WHERE guild_id = $1',
+            [guildId]
+        );
+        return result.rows[0] || null;
+    }
+
+    // Définir les instructions de l'IA pour un serveur
+    async setAIInstructions(guildId, instructions) {
+        await this.pool.query(
+            `INSERT INTO ai_settings (guild_id, instructions, updated_at) 
+             VALUES ($1, $2, CURRENT_TIMESTAMP)
+             ON CONFLICT (guild_id) 
+             DO UPDATE SET instructions = $2, updated_at = CURRENT_TIMESTAMP`,
+            [guildId, instructions]
+        );
+    }
+
+    // Définir le salon autorisé pour l'IA
+    async setAIAllowedChannel(guildId, channelId) {
+        await this.pool.query(
+            `INSERT INTO ai_settings (guild_id, allowed_channel_id, updated_at) 
+             VALUES ($1, $2, CURRENT_TIMESTAMP)
+             ON CONFLICT (guild_id) 
+             DO UPDATE SET allowed_channel_id = $2, updated_at = CURRENT_TIMESTAMP`,
+            [guildId, channelId]
+        );
     }
 
     // Fermer la connexion
