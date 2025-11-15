@@ -105,11 +105,17 @@ class AIManager {
         return text.match(regex) || [];
     }
 
-    // Envoyer une requête à l'IA
+    // Envoyer une requête à l'IA avec fallback sur plusieurs modèles
     async chat(guildId, userMessage, conversationHistory = [], interaction = null) {
         if (!this.apiKey) {
             throw new Error('Clé API OpenRouter non configurée. Ajoutez OPENROUTER_API_KEY dans vos variables d\'environnement.');
         }
+
+        // Liste des modèles à essayer dans l'ordre
+        const models = [
+            'nousresearch/hermes-3-llama-3.1-405b:free', // Modèle puissant gratuit
+            'mistralai/mistral-7b-instruct:free'        // Fallback Mistral 7B
+        ];
 
         try {
             // Récupérer les instructions depuis la base de données
@@ -142,42 +148,56 @@ class AIManager {
                 }
             ];
 
-            const response = await axios.post(
-                this.baseUrl,
-                {
-                    model: 'nousresearch/hermes-3-llama-3.1-405b:free', // Modèle puissant gratuit
-                    messages: messages,
-                    temperature: 0.7,
-                    max_tokens: 1000
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.apiKey}`,
-                        'Content-Type': 'application/json',
-                        'HTTP-Referer': 'https://github.com/your-repo', // Remplacer par votre repo
-                        'X-Title': 'Scriptorium Bot'
-                    }
-                }
-            );
+            // Essayer chaque modèle jusqu'à ce que l'un fonctionne
+            let lastError = null;
+            for (const model of models) {
+                try {
+                    const response = await axios.post(
+                        this.baseUrl,
+                        {
+                            model: model,
+                            messages: messages,
+                            temperature: 0.7,
+                            max_tokens: 1000
+                        },
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${this.apiKey}`,
+                                'Content-Type': 'application/json',
+                                'HTTP-Referer': 'https://github.com/your-repo',
+                                'X-Title': 'Scriptorium Bot'
+                            }
+                        }
+                    );
 
-            // Nettoyer la réponse (retirer les tokens spéciaux Mistral)
-            let responseText = response.data.choices[0].message.content;
-            
-            // Retirer les tokens spéciaux Mistral
-            responseText = responseText
-                .replace(/^<s>\s*/g, '')
-                .replace(/\s*<\/s>\s*/g, '')
-                .replace(/^\[INST\]\s*/g, '')
-                .replace(/\s*\[\/INST\]\s*/g, '')
-                .replace(/^<\|.*?\|>\s*/g, '') // Tokens de format spéciaux
-                .trim();
-            
-            // Log pour debugging
-            if (!responseText || responseText.length === 0) {
-                console.warn('⚠️ Réponse IA vide après nettoyage. Réponse brute:', response.data.choices[0].message.content);
+                    // Nettoyer la réponse
+                    let responseText = response.data.choices[0].message.content;
+                    responseText = responseText
+                        .replace(/^<s>\s*/g, '')
+                        .replace(/\s*<\/s>\s*/g, '')
+                        .replace(/^\[INST\]\s*/g, '')
+                        .replace(/\s*\[\/INST\]\s*/g, '')
+                        .replace(/^<\|.*?\|>\s*/g, '')
+                        .trim();
+                    
+                    if (responseText && responseText.length > 0) {
+                        console.log(`✅ Réponse reçue du modèle: ${model}`);
+                        return responseText;
+                    }
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`⚠️ Modèle ${model} échoué, essai du suivant...`);
+                    continue;
+                }
+            }
+
+            // Si aucun modèle n'a fonctionné
+            if (lastError) {
+                console.error('❌ Erreur lors de la requête IA:', lastError.response?.data || lastError.message);
+                throw new Error('Impossible de contacter l\'IA. Vérifiez votre connexion et votre clé API.');
             }
             
-            return responseText;
+            throw new Error('L\'IA n\'a pas pu générer de réponse.');
         } catch (error) {
             console.error('❌ Erreur lors de la requête IA:', error.response?.data || error.message);
             throw new Error('Impossible de contacter l\'IA. Vérifiez votre connexion et votre clé API.');
