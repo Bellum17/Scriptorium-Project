@@ -1099,19 +1099,28 @@ client.on(Events.MessageCreate, async (message) => {
 
         // Vérifier si c'est une réponse à un message du bot (IA)
         if (message.reference && message.mentions.has(client.user.id)) {
+            console.log('🔍 Réponse à un message avec mention du bot détectée');
             try {
                 const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
+                console.log('📨 Message d\'origine récupéré, auteur:', repliedMessage.author.tag);
                 
                 // Vérifier si c'est une réponse à un message du bot
                 if (repliedMessage.author.id === client.user.id) {
+                    console.log('✅ C\'est bien une réponse à un message du bot');
+                    
                     // Vérifier le salon autorisé
                     const allowedChannelId = await ai.getAllowedChannel(message.guildId);
+                    console.log('🏠 Salon autorisé:', allowedChannelId || 'Aucun (tous les salons autorisés)');
+                    
                     if (!allowedChannelId || allowedChannelId === message.channelId) {
+                        console.log('✅ Salon autorisé, génération de la réponse IA...');
+                        
                         // Envoyer un indicateur de frappe
                         await message.channel.sendTyping();
                         
                         // Envoyer le message à l'IA
                         const response = await ai.chat(message.guildId, message.content);
+                        console.log('🤖 Réponse IA reçue, longueur:', response?.length || 0);
                         
                         if (response && response.trim().length > 0) {
                             // Créer un embed pour la réponse
@@ -1130,7 +1139,12 @@ client.on(Events.MessageCreate, async (message) => {
 
                             // Répondre au message avec l'embed
                             await message.reply({ embeds: [embed] });
+                            console.log('✅ Embed envoyé avec succès');
+                        } else {
+                            console.log('❌ Réponse IA vide après nettoyage');
                         }
+                    } else {
+                        console.log('❌ Salon non autorisé');
                     }
                     return;
                 }
