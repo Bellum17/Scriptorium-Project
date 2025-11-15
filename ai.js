@@ -115,12 +115,6 @@ class AIManager {
             // Récupérer les instructions depuis la base de données
             let instructions = await this.getInstructions(guildId);
             
-            // Ajouter le contexte du serveur aux instructions
-            let guildContext = '';
-            if (interaction) {
-                guildContext = await this.getGuildContext(guildId);
-            }
-            
             // Traiter les liens de messages
             let enhancedMessage = userMessage;
             const messageLinks = this.extractMessageLinks(userMessage);
@@ -139,7 +133,7 @@ class AIManager {
             const messages = [
                 {
                     role: 'system',
-                    content: instructions + guildContext
+                    content: instructions
                 },
                 ...conversationHistory,
                 {
@@ -168,13 +162,20 @@ class AIManager {
 
             // Nettoyer la réponse (retirer les tokens spéciaux Mistral)
             let responseText = response.data.choices[0].message.content;
-            // Retirer les tokens spéciaux Mistral comme <s>, </s>, [INST], [/INST]
+            
+            // Retirer les tokens spéciaux Mistral
             responseText = responseText
-                .replace(/^<s>\s*/, '')
-                .replace(/\s*<\/s>$/, '')
-                .replace(/^\[INST\]\s*/, '')
-                .replace(/\s*\[\/INST\]$/, '')
+                .replace(/^<s>\s*/g, '')
+                .replace(/\s*<\/s>\s*/g, '')
+                .replace(/^\[INST\]\s*/g, '')
+                .replace(/\s*\[\/INST\]\s*/g, '')
+                .replace(/^<\|.*?\|>\s*/g, '') // Tokens de format spéciaux
                 .trim();
+            
+            // Log pour debugging
+            if (!responseText || responseText.length === 0) {
+                console.warn('⚠️ Réponse IA vide après nettoyage. Réponse brute:', response.data.choices[0].message.content);
+            }
             
             return responseText;
         } catch (error) {
