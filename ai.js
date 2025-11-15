@@ -45,17 +45,17 @@ class AIManager {
             
             // Salons textuels
             const textChannels = guild.channels.cache
-                .filter(c => c.isTextBased() && !c.isDMBased())
+                .filter(c => c.isTextBased && !c.isDMBased())
                 .map(c => `<#${c.id}>`)
                 .slice(0, 10);
             
             if (textChannels.length > 0) {
-                context += `- Salons: ${textChannels.join(', ')}${guild.channels.cache.filter(c => c.isTextBased()).size > 10 ? ' ...' : ''}\n`;
+                context += `- Salons: ${textChannels.join(', ')}${guild.channels.cache.filter(c => c.isTextBased).size > 10 ? ' ...' : ''}\n`;
             }
             
             // Rôles
             const roles = guild.roles.cache
-                .filter(r => !r.isManaged() && r.id !== guildId)
+                .filter(r => !r.managed && r.id !== guildId)
                 .map(r => `<@&${r.id}>`)
                 .slice(0, 10);
             
@@ -82,7 +82,7 @@ class AIManager {
             const guild = await this.client.guilds.fetch(guildId);
             const channel = await guild.channels.fetch(channelId);
             
-            if (!channel || !channel.isTextBased()) return null;
+            if (!channel || !channel.isTextBased) return null;
             
             const message = await channel.messages.fetch(messageId);
             if (!message) return null;
