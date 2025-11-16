@@ -151,10 +151,12 @@ class AIManager {
             throw new Error('Clé API OpenRouter non configurée. Ajoutez OPENROUTER_API_KEY dans vos variables d\'environnement.');
         }
 
-        // Liste des modèles à essayer dans l'ordre
+        // Liste des modèles à essayer dans l'ordre (tous gratuits)
         const models = [
-            'google/gemini-2.0-flash-exp',  // Google Gemini - très performant et gratuit
-            'mistralai/mistral-7b-instruct:free'  // Fallback Mistral 7B
+            'mistralai/mistral-small-3.2-24b-instruct:free',  // Mistral Small 24B - performant et gratuit
+            'mistralai/mistral-7b-instruct:free',  // Mistral 7B - fallback léger
+            'meta-llama/llama-3.1-8b-instruct:free',  // Llama 3.1 8B - alternative
+            'google/gemini-2.0-flash-001'  // Google Gemini 2.0 Flash - très performant
         ];
 
         try {
