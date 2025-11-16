@@ -153,7 +153,8 @@ class AIManager {
 
         // Liste des modèles à essayer dans l'ordre
         const models = [
-            'mistralai/mistral-7b-instruct:free'  // Mistral 7B - stable et fiable
+            'google/gemini-2.0-flash-exp',  // Google Gemini - très performant et gratuit
+            'mistralai/mistral-7b-instruct:free'  // Fallback Mistral 7B
         ];
 
         try {
@@ -247,15 +248,24 @@ class AIManager {
                     }
                 } catch (error) {
                     lastError = error;
-                    console.warn(`⚠️ Modèle ${model} échoué, essai du suivant...`);
+                    
+                    // Checker si c'est une rate limit
+                    if (error.response?.status === 429) {
+                        console.warn(`⚠️ Modèle ${model} rate-limité (429). Message: ${error.response?.data?.error?.message || 'Unknown'}`);
+                    } else {
+                        console.warn(`⚠️ Modèle ${model} échoué: ${error.response?.data?.error?.message || error.message}`);
+                    }
+                    
+                    // Continuer vers le modèle suivant
                     continue;
                 }
             }
 
-            // Si aucun modèle n'a fonctionné
+            // Si aucun modèle n'a fonctionné, retourner une erreur
             if (lastError) {
-                console.error('❌ Erreur lors de la requête IA:', lastError.response?.data || lastError.message);
-                throw new Error('Impossible de contacter l\'IA. Vérifiez votre connexion et votre clé API.');
+                const errorData = lastError.response?.data?.error;
+                console.error('❌ Tous les modèles ont échoué. Dernière erreur:', errorData || lastError.message);
+                throw new Error(`Impossible de contacter l'IA: ${errorData?.message || lastError.message}`);
             }
             
             throw new Error('L\'IA n\'a pas pu générer de réponse.');
