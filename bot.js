@@ -11,6 +11,7 @@ const play = require('play-dl');
 const ytdl = require('ytdl-core');
 const axios = require('axios');
 const express = require('express');
+const fs = require('fs');
 const DatabaseManager = require('./database');
 const StatsGenerator = require('./stats');
 const AIManager = require('./ai');
@@ -67,6 +68,84 @@ let ai;
 // Cache des webhooks par channel
 const webhookCache = new Map();
 
+// ==================== YOUTUBE COOKIES MANAGER ====================
+class YouTubeCookieManager {
+    constructor(cookieFilePath = './youtube_cookies.json') {
+        this.cookieFilePath = cookieFilePath;
+        this.cookies = [];
+        this.isValid = false;
+        this.load();
+    }
+    
+    load() {
+        try {
+            // Essayer variable d'environnement d'abord (pour Railway)
+            if (process.env.YOUTUBE_COOKIES) {
+                this.cookies = JSON.parse(process.env.YOUTUBE_COOKIES);
+                console.log('✅ Cookies YouTube chargés depuis ENV');
+                this.isValid = true;
+                return;
+            }
+            
+            // Sinon fichier local
+            if (fs.existsSync(this.cookieFilePath)) {
+                const fileContent = fs.readFileSync(this.cookieFilePath, 'utf8');
+                this.cookies = JSON.parse(fileContent);
+                console.log('✅ Cookies YouTube chargés depuis fichier');
+                this.isValid = true;
+                return;
+            }
+            
+            console.log('⚠️ Aucun cookie YouTube trouvé (performance réduite)');
+            console.log('💡 Ajoutez un fichier youtube_cookies.json ou la variable ENV YOUTUBE_COOKIES');
+        } catch (error) {
+            console.error('❌ Erreur chargement cookies:', error.message);
+            this.isValid = false;
+        }
+    }
+    
+    format() {
+        if (!this.cookies || this.cookies.length === 0) return '';
+        return this.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+    }
+    
+    getHeaders() {
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        };
+        
+        const cookieString = this.format();
+        if (cookieString) {
+            headers['Cookie'] = cookieString;
+        }
+        
+        return headers;
+    }
+    
+    async validate() {
+        if (this.cookies.length === 0) return false;
+        
+        try {
+            const testUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+            await ytdl.getInfo(testUrl, {
+                requestOptions: { headers: this.getHeaders() }
+            });
+            console.log('✅ Cookies YouTube validés avec succès');
+            this.isValid = true;
+            return true;
+        } catch (error) {
+            console.error('❌ Cookies YouTube invalides ou expirés:', error.message);
+            this.isValid = false;
+            return false;
+        }
+    }
+}
+
+// Initialiser le gestionnaire de cookies
+const cookieManager = new YouTubeCookieManager();
+
 // Gestion de la musique - Map des queues par serveur
 const musicQueues = new Map();
 
@@ -119,6 +198,12 @@ class MusicQueue {
 client.once(Events.ClientReady, async (readyClient) => {
     console.log(`✅ Bot connecté en tant que ${readyClient.user.tag}`);
     console.log(`🤖 Bot actif sur ${readyClient.guilds.cache.size} serveur(s)`);
+    
+    // Valider les cookies YouTube si présents
+    if (cookieManager.cookies.length > 0) {
+        console.log('🍪 Validation des cookies YouTube...');
+        await cookieManager.validate();
+    }
     
     // Initialiser la base de données
     try {
@@ -1737,13 +1822,10 @@ async function handlePlay(interaction) {
 
         let song;
         try {
-            // Essayer ytdl-core d'abord avec options avancées
+            // Essayer ytdl-core d'abord avec cookies
             const info = await ytdl.getInfo(videoUrl, {
                 requestOptions: {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
-                    }
+                    headers: cookieManager.getHeaders()
                 }
             });
             
@@ -1916,10 +1998,7 @@ async function playSong(queue, interaction) {
                     highWaterMark: 1 << 25, // 32MB buffer
                     dlChunkSize: 0, // Désactiver le chunking
                     requestOptions: {
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
-                        }
+                        headers: cookieManager.getHeaders()
                     }
                 });
                 

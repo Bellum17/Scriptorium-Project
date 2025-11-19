@@ -32,6 +32,7 @@
     "opusscript": "^0.0.8",
     "pg": "^8.11.3",
     "play-dl": "^1.9.7",
+    "puppeteer": "^24.30.0",
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
