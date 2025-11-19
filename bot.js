@@ -9,6 +9,7 @@ const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, Em
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState } = require('@discordjs/voice');
 const play = require('play-dl');
 const ytdl = require('ytdl-core');
+const youtubedl = require('youtube-dl-exec');
 const axios = require('axios');
 const express = require('express');
 const fs = require('fs');
@@ -1830,7 +1831,7 @@ async function handlePlay(interaction) {
 
         let song;
         try {
-            // INVERSER: Essayer play-dl d'abord (plus stable actuellement)
+            // Méthode 1: Essayer play-dl d'abord
             const videoInfo = await play.video_info(videoUrl);
             const video = videoInfo.video_details;
 
@@ -1840,35 +1841,67 @@ async function handlePlay(interaction) {
                 duration: formatDuration(video.durationInSec),
                 thumbnail: video.thumbnails[0].url,
                 requestedBy: interaction.user,
-                useYtdl: false
+                useYtdl: false,
+                useYtDlp: false
             };
             console.log('✅ Métadonnées récupérées avec play-dl');
         } catch (playDlError) {
-            console.error('❌ play-dl a échoué, essai avec ytdl-core + cookies:', playDlError.message);
+            console.error('❌ play-dl a échoué:', playDlError.message);
             
-            // Fallback vers ytdl-core avec cookies
+            // Méthode 2: Fallback vers youtube-dl-exec (yt-dlp)
             try {
-                const info = await ytdl.getInfo(videoUrl, {
-                    requestOptions: {
-                        headers: cookieManager.getHeaders()
-                    }
+                console.log('🔄 Essai avec yt-dlp...');
+                const info = await youtubedl(videoUrl, {
+                    dumpSingleJson: true,
+                    noCheckCertificates: true,
+                    noWarnings: true,
+                    preferFreeFormats: true,
+                    addHeader: [
+                        'referer:youtube.com',
+                        'user-agent:Mozilla/5.0'
+                    ]
                 });
                 
                 song = {
-                    title: info.videoDetails.title,
-                    url: info.videoDetails.video_url,
-                    duration: formatDuration(parseInt(info.videoDetails.lengthSeconds)),
-                    thumbnail: info.videoDetails.thumbnails[0]?.url || null,
+                    title: info.title,
+                    url: videoUrl,
+                    duration: formatDuration(parseInt(info.duration)),
+                    thumbnail: info.thumbnail,
                     requestedBy: interaction.user,
-                    useYtdl: true
+                    useYtdl: false,
+                    useYtDlp: true,
+                    ytdlpInfo: info
                 };
-                console.log('✅ Métadonnées récupérées avec ytdl-core (fallback)');
-            } catch (ytdlError) {
-                console.error('❌ ytdl-core a aussi échoué:', ytdlError.message);
-                await interaction.editReply({
-                    content: `❌ Impossible de récupérer la vidéo YouTube.\n\n**Erreur 1 (play-dl):** ${playDlError.message}\n**Erreur 2 (ytdl-core):** ${ytdlError.message}\n\n💡 YouTube bloque temporairement les requêtes. Réessayez dans 1-2 minutes.`
-                });
-                return;
+                console.log('✅ Métadonnées récupérées avec yt-dlp');
+            } catch (ytdlpError) {
+                console.error('❌ yt-dlp a échoué:', ytdlpError.message);
+                
+                // Méthode 3: Dernier essai avec ytdl-core + cookies
+                try {
+                    console.log('🔄 Dernier essai avec ytdl-core...');
+                    const info = await ytdl.getInfo(videoUrl, {
+                        requestOptions: {
+                            headers: cookieManager.getHeaders()
+                        }
+                    });
+                    
+                    song = {
+                        title: info.videoDetails.title,
+                        url: info.videoDetails.video_url,
+                        duration: formatDuration(parseInt(info.videoDetails.lengthSeconds)),
+                        thumbnail: info.videoDetails.thumbnails[0]?.url || null,
+                        requestedBy: interaction.user,
+                        useYtdl: true,
+                        useYtDlp: false
+                    };
+                    console.log('✅ Métadonnées récupérées avec ytdl-core');
+                } catch (ytdlError) {
+                    console.error('❌ Toutes les méthodes ont échoué');
+                    await interaction.editReply({
+                        content: `❌ Impossible de récupérer la vidéo YouTube.\n\n**play-dl:** ${playDlError.message}\n**yt-dlp:** ${ytdlpError.message}\n**ytdl-core:** ${ytdlError.message}\n\n💡 Essayez une autre vidéo ou réessayez dans quelques minutes.`
+                    });
+                    return;
+                }
             }
         }
 
@@ -1995,7 +2028,41 @@ async function playSong(queue, interaction) {
     try {
         let resource;
         
-        if (song.useYtdl) {
+        if (song.useYtDlp) {
+            // Utiliser yt-dlp pour le streaming
+            console.log('🎵 Streaming avec yt-dlp...');
+            
+            try {
+                // Extraire l'URL directe du stream audio
+                const formats = song.ytdlpInfo.formats || [];
+                const audioFormat = formats.find(f => f.acodec !== 'none' && f.vcodec === 'none') || 
+                                  formats.find(f => f.acodec !== 'none') ||
+                                  formats[0];
+                
+                if (!audioFormat || !audioFormat.url) {
+                    throw new Error('Aucun format audio trouvé');
+                }
+                
+                // Créer un stream depuis l'URL directe
+                const response = await axios({
+                    method: 'get',
+                    url: audioFormat.url,
+                    responseType: 'stream',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                });
+                
+                resource = createAudioResource(response.data, {
+                    inputType: StreamType.Arbitrary,
+                    inlineVolume: true
+                });
+                console.log('✅ Stream yt-dlp créé');
+            } catch (ytdlpStreamError) {
+                console.error('❌ yt-dlp streaming échoué:', ytdlpStreamError.message);
+                throw new Error('Impossible de streamer avec yt-dlp');
+            }
+        } else if (song.useYtdl) {
             // Utiliser ytdl-core avec options avancées
             console.log('🎵 Streaming avec ytdl-core...');
             
@@ -2015,20 +2082,8 @@ async function playSong(queue, interaction) {
                     inlineVolume: true
                 });
             } catch (ytdlStreamError) {
-                console.error('❌ ytdl-core streaming échoué, essai avec play-dl:', ytdlStreamError.message);
-                
-                // Fallback vers play-dl pour le streaming
-                try {
-                    const playStream = await play.stream(song.url);
-                    resource = createAudioResource(playStream.stream, {
-                        inputType: playStream.type,
-                        inlineVolume: true
-                    });
-                    console.log('✅ Streaming avec play-dl (fallback)');
-                } catch (playStreamError) {
-                    console.error('❌ play-dl streaming aussi échoué:', playStreamError.message);
-                    throw new Error('Impossible de streamer la vidéo');
-                }
+                console.error('❌ ytdl-core streaming échoué:', ytdlStreamError.message);
+                throw new Error('Impossible de streamer avec ytdl-core');
             }
         } else {
             // Utiliser play-dl
