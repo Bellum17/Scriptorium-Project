@@ -6,8 +6,9 @@ require('dotenv').config();
 
 // Import de Discord.js et axios pour les requêtes HTTP
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState } = require('@discordjs/voice');
 const play = require('play-dl');
+const ytdl = require('ytdl-core');
 const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
@@ -1685,8 +1686,8 @@ async function handlePlay(interaction) {
 
         const videoUrl = interaction.options.getString('video');
 
-        // Valider l'URL YouTube
-        if (!play.yt_validate(videoUrl)) {
+        // Valider l'URL YouTube avec ytdl-core
+        if (!ytdl.validateURL(videoUrl)) {
             await interaction.editReply({
                 content: '❌ Lien YouTube invalide ! Veuillez fournir un lien YouTube valide.'
             });
@@ -1694,15 +1695,14 @@ async function handlePlay(interaction) {
         }
 
         try {
-            // Récupérer les informations de la vidéo
-            const videoInfo = await play.video_info(videoUrl);
-            const video = videoInfo.video_details;
+            // Récupérer les informations de la vidéo avec ytdl-core
+            const videoInfo = await ytdl.getInfo(videoUrl);
 
             const song = {
-                title: video.title,
-                url: video.url,
-                duration: formatDuration(video.durationInSec),
-                thumbnail: video.thumbnails[0].url,
+                title: videoInfo.videoDetails.title,
+                url: videoInfo.videoDetails.video_url,
+                duration: formatDuration(parseInt(videoInfo.videoDetails.lengthSeconds)),
+                thumbnail: videoInfo.videoDetails.thumbnails[0].url,
                 requestedBy: interaction.user
             };
 
@@ -1718,7 +1718,9 @@ async function handlePlay(interaction) {
                 const connection = joinVoiceChannel({
                     channelId: voiceChannel.id,
                     guildId: interaction.guildId,
-                    adapterCreator: interaction.guild.voiceAdapterCreator
+                    adapterCreator: interaction.guild.voiceAdapterCreator,
+                    selfDeaf: true,
+                    selfMute: false
                 });
 
                 queue.connection = connection;
@@ -1823,11 +1825,22 @@ async function playSong(queue, interaction) {
     queue.isPlaying = true;
 
     try {
-        // Créer un stream audio depuis YouTube
-        const stream = await play.stream(song.url);
-        const resource = createAudioResource(stream.stream, {
-            inputType: stream.type
+        // Créer un stream audio depuis YouTube avec ytdl-core
+        const stream = ytdl(song.url, {
+            filter: 'audioonly',
+            quality: 'highestaudio',
+            highWaterMark: 1 << 25 // 32MB buffer
         });
+
+        const resource = createAudioResource(stream, {
+            inputType: StreamType.Arbitrary,
+            inlineVolume: true
+        });
+
+        // Ajuster le volume (optionnel)
+        if (resource.volume) {
+            resource.volume.setVolume(0.5); // 50% du volume
+        }
 
         // Jouer la musique
         queue.player.play(resource);
