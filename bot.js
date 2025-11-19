@@ -8,7 +8,6 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState } = require('@discordjs/voice');
 const play = require('play-dl');
-const ytdl = require('@distube/ytdl-core');
 const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
@@ -1717,8 +1716,8 @@ async function handlePlay(interaction) {
         // Nettoyer l'URL (supporter les liens de partage, playlists, etc.)
         videoUrl = cleanYouTubeURL(videoUrl);
 
-        // Valider l'URL YouTube avec ytdl-core
-        if (!ytdl.validateURL(videoUrl)) {
+        // Valider l'URL YouTube avec play-dl
+        if (!play.yt_validate(videoUrl)) {
             await interaction.editReply({
                 content: '❌ Lien YouTube invalide ! Veuillez fournir un lien YouTube valide.'
             });
@@ -1726,21 +1725,15 @@ async function handlePlay(interaction) {
         }
 
         try {
-            // Récupérer les informations de la vidéo avec ytdl-core
-            const videoInfo = await ytdl.getInfo(videoUrl, {
-                requestOptions: {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept-Language': 'en-US,en;q=0.9'
-                    }
-                }
-            });
+            // Récupérer les informations de la vidéo avec play-dl
+            const videoInfo = await play.video_info(videoUrl);
+            const video = videoInfo.video_details;
 
             const song = {
-                title: videoInfo.videoDetails.title,
-                url: videoInfo.videoDetails.video_url,
-                duration: formatDuration(parseInt(videoInfo.videoDetails.lengthSeconds)),
-                thumbnail: videoInfo.videoDetails.thumbnails[0].url,
+                title: video.title,
+                url: video.url,
+                duration: formatDuration(video.durationInSec),
+                thumbnail: video.thumbnails[0].url,
                 requestedBy: interaction.user
             };
 
@@ -1863,21 +1856,11 @@ async function playSong(queue, interaction) {
     queue.isPlaying = true;
 
     try {
-        // Créer un stream audio depuis YouTube avec ytdl-core
-        const stream = ytdl(song.url, {
-            filter: 'audioonly',
-            quality: 'highestaudio',
-            highWaterMark: 1 << 25, // 32MB buffer
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept-Language': 'en-US,en;q=0.9'
-                }
-            }
-        });
-
-        const resource = createAudioResource(stream, {
-            inputType: StreamType.Arbitrary,
+        // Créer un stream audio depuis YouTube avec play-dl
+        const stream = await play.stream(song.url);
+        
+        const resource = createAudioResource(stream.stream, {
+            inputType: stream.type,
             inlineVolume: true
         });
 
