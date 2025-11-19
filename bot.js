@@ -4,31 +4,9 @@ process.removeAllListeners('warning');
 // Chargement des variables d'environnement
 require('dotenv').config();
 
-// CRITIQUE: Charger sodium AVANT @discordjs/voice pour qu'il le détecte
-// Discord.js cherche sodium au moment de l'import, pas à l'exécution
-try {
-    // Essayer sodium-native d'abord (meilleur pour Linux/Railway)
-    const sodiumNative = require('sodium-native');
-    // Exposer dans le scope global pour @discordjs/voice
-    global.sodium = sodiumNative;
-    console.log('✅ sodium-native chargé et exposé globalement');
-} catch (err1) {
-    try {
-        // Fallback vers libsodium-wrappers
-        const sodiumWrappers = require('libsodium-wrappers');
-        global.sodium = sodiumWrappers;
-        console.log('✅ libsodium-wrappers chargé et exposé globalement');
-    } catch (err2) {
-        console.error('❌ Aucune bibliothèque sodium disponible!');
-        console.error('   sodium-native:', err1.message);
-        console.error('   libsodium-wrappers:', err2.message);
-        process.exit(1);
-    }
-}
-
 // Import de Discord.js et axios pour les requêtes HTTP
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState, getVoiceConnection } = require('@discordjs/voice');
 const play = require('play-dl');
 const ytdl = require('ytdl-core');
 const youtubedl = require('youtube-dl-exec');
@@ -2396,18 +2374,8 @@ async function connectWithRetry(maxRetries = 5, delay = 5000) {
 // Initialisation et connexion du bot
 (async () => {
     try {
-        console.log('🔐 Initialisation de la bibliothèque de chiffrement...');
-        
-        // libsodium-wrappers a besoin de .ready, sodium-native non
-        if (global.sodium && global.sodium.ready) {
-            await global.sodium.ready;
-            console.log('✅ libsodium-wrappers initialisé et prêt');
-        } else {
-            console.log('✅ sodium-native prêt (synchrone)');
-        }
-        
-        console.log('🔧 Encryption disponible pour @discordjs/voice');
-        console.log('💡 Modes supportés: aead_aes256_gcm, aead_xchacha20poly1305');
+        console.log('� Démarrage du bot Discord...');
+        console.log('� Encryption vocale: tweetnacl (pur JavaScript, compatible Railway)');
         
         // Connexion du bot avec retry
         await connectWithRetry();
