@@ -45,7 +45,8 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildWebhooks,
-        GatewayIntentBits.GuildMembers // Nécessaire pour tracker les arrivées/départs
+        GatewayIntentBits.GuildMembers, // Nécessaire pour tracker les arrivées/départs
+        GatewayIntentBits.GuildVoiceStates // Nécessaire pour détecter les salons vocaux
     ],
     rest: {
         timeout: 30000, // Augmenter le timeout à 30 secondes
