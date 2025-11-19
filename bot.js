@@ -4,6 +4,21 @@ process.removeAllListeners('warning');
 // Chargement des variables d'environnement
 require('dotenv').config();
 
+// SOLUTION CRITIQUE: Forcer l'installation de tweetnacl AVANT @discordjs/voice
+// Cela garantit que Discord.js le détecte au moment de l'import
+try {
+    const tweetnacl = require('tweetnacl');
+    // Exposer pour que @discordjs/voice le trouve
+    if (!global.sodium) {
+        global.sodium = tweetnacl;
+    }
+    console.log('✅ tweetnacl chargé et exposé pour Discord.js voice');
+} catch (err) {
+    console.error('❌ ERREUR CRITIQUE: tweetnacl non trouvé!', err.message);
+    console.error('   Exécutez: npm install tweetnacl');
+    process.exit(1);
+}
+
 // Import de Discord.js et axios pour les requêtes HTTP
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState, getVoiceConnection } = require('@discordjs/voice');
