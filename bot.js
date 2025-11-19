@@ -6,6 +6,8 @@ require('dotenv').config();
 
 // Import de Discord.js et axios pour les requêtes HTTP
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const play = require('play-dl');
 const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
@@ -62,6 +64,44 @@ let ai;
 
 // Cache des webhooks par channel
 const webhookCache = new Map();
+
+// Gestion de la musique - Map des queues par serveur
+const musicQueues = new Map();
+
+// Structure d'une queue musicale
+class MusicQueue {
+    constructor(guildId) {
+        this.guildId = guildId;
+        this.songs = [];
+        this.currentSong = null;
+        this.connection = null;
+        this.player = null;
+        this.isPlaying = false;
+    }
+
+    addSong(song) {
+        this.songs.push(song);
+    }
+
+    getNextSong() {
+        return this.songs.shift();
+    }
+
+    clear() {
+        this.songs = [];
+        this.currentSong = null;
+    }
+
+    destroy() {
+        if (this.connection) {
+            this.connection.destroy();
+        }
+        if (this.player) {
+            this.player.stop();
+        }
+        this.clear();
+    }
+}
 
 // Événement déclenché quand le bot est prêt
 client.once(Events.ClientReady, async (readyClient) => {
@@ -225,7 +265,25 @@ async function registerCommands(client) {
                             .setDescription('L\'emoji dont vous voulez l\'image (emoji Discord ou Unicode)')
                             .setRequired(true)
                     )
-            )
+            ),
+        new SlashCommandBuilder()
+            .setName('play')
+            .setDescription('Jouer une musique YouTube dans le salon vocal')
+            .addStringOption(option =>
+                option
+                    .setName('video')
+                    .setDescription('Lien YouTube de la vidéo à jouer')
+                    .setRequired(true)
+            ),
+        new SlashCommandBuilder()
+            .setName('skip')
+            .setDescription('Passer à la musique suivante'),
+        new SlashCommandBuilder()
+            .setName('stop')
+            .setDescription('Arrêter la musique et quitter le vocal'),
+        new SlashCommandBuilder()
+            .setName('queue')
+            .setDescription('Afficher la file d\'attente des musiques')
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -307,6 +365,14 @@ async function handleCommand(interaction) {
                     await handleEmojiImage(interaction);
                     break;
             }
+        } else if (interaction.commandName === 'play') {
+            await handlePlay(interaction);
+        } else if (interaction.commandName === 'skip') {
+            await handleSkip(interaction);
+        } else if (interaction.commandName === 'stop') {
+            await handleStop(interaction);
+        } else if (interaction.commandName === 'queue') {
+            await handleQueue(interaction);
         }
     } catch (error) {
         console.error('❌ Erreur lors de l\'exécution de la commande:', error);
@@ -1585,6 +1651,360 @@ async function handleEmojiImage(interaction) {
             await interaction.reply({ ...errorResponse, flags: MessageFlags.Ephemeral });
         }
     }
+}
+
+// ========================================
+// SYSTÈME DE MUSIQUE
+// ========================================
+
+// Gestionnaire de la commande /play
+async function handlePlay(interaction) {
+    try {
+        // Vérifier que l'utilisateur est dans un salon vocal
+        const voiceChannel = interaction.member.voice.channel;
+        if (!voiceChannel) {
+            await interaction.reply({
+                content: '❌ Vous devez être dans un salon vocal pour utiliser cette commande !',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Vérifier les permissions du bot
+        const permissions = voiceChannel.permissionsFor(interaction.client.user);
+        if (!permissions.has(PermissionFlagsBits.Connect) || !permissions.has(PermissionFlagsBits.Speak)) {
+            await interaction.reply({
+                content: '❌ Je n\'ai pas les permissions pour rejoindre et parler dans ce salon vocal !',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        await interaction.deferReply();
+
+        const videoUrl = interaction.options.getString('video');
+
+        // Valider l'URL YouTube
+        if (!play.yt_validate(videoUrl)) {
+            await interaction.editReply({
+                content: '❌ Lien YouTube invalide ! Veuillez fournir un lien YouTube valide.'
+            });
+            return;
+        }
+
+        try {
+            // Récupérer les informations de la vidéo
+            const videoInfo = await play.video_info(videoUrl);
+            const video = videoInfo.video_details;
+
+            const song = {
+                title: video.title,
+                url: video.url,
+                duration: formatDuration(video.durationInSec),
+                thumbnail: video.thumbnails[0].url,
+                requestedBy: interaction.user
+            };
+
+            // Obtenir ou créer la queue pour ce serveur
+            let queue = musicQueues.get(interaction.guildId);
+
+            if (!queue) {
+                // Créer une nouvelle queue
+                queue = new MusicQueue(interaction.guildId);
+                musicQueues.set(interaction.guildId, queue);
+
+                // Rejoindre le salon vocal
+                const connection = joinVoiceChannel({
+                    channelId: voiceChannel.id,
+                    guildId: interaction.guildId,
+                    adapterCreator: interaction.guild.voiceAdapterCreator
+                });
+
+                queue.connection = connection;
+
+                // Créer un audio player
+                const player = createAudioPlayer();
+                queue.player = player;
+
+                // Connecter le player à la connexion
+                connection.subscribe(player);
+
+                // Gérer les événements du player
+                player.on(AudioPlayerStatus.Idle, () => {
+                    // Quand une musique se termine, jouer la suivante
+                    playNextSong(queue, interaction);
+                });
+
+                player.on('error', error => {
+                    console.error('❌ Erreur du lecteur audio:', error);
+                    playNextSong(queue, interaction);
+                });
+
+                // Ajouter la musique et commencer à jouer
+                queue.addSong(song);
+                await playSong(queue, interaction);
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle('🎵 Lecture en cours')
+                    .setDescription(`**${song.title}**`)
+                    .setThumbnail(song.thumbnail)
+                    .addFields(
+                        { name: 'Durée', value: song.duration, inline: true },
+                        { name: 'Demandé par', value: song.requestedBy.username, inline: true }
+                    )
+                    .setFooter({ text: 'Utilisez /queue pour voir la file d\'attente' });
+
+                await interaction.editReply({ embeds: [embed] });
+
+            } else {
+                // Ajouter la musique à la queue existante
+                queue.addSong(song);
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle('✅ Ajouté à la file d\'attente')
+                    .setDescription(`**${song.title}**`)
+                    .setThumbnail(song.thumbnail)
+                    .addFields(
+                        { name: 'Position', value: `#${queue.songs.length}`, inline: true },
+                        { name: 'Durée', value: song.duration, inline: true },
+                        { name: 'Demandé par', value: song.requestedBy.username, inline: true }
+                    );
+
+                await interaction.editReply({ embeds: [embed] });
+            }
+
+        } catch (error) {
+            console.error('❌ Erreur lors de la récupération de la vidéo:', error);
+            await interaction.editReply({
+                content: '❌ Impossible de récupérer les informations de cette vidéo. Assurez-vous que le lien est correct et que la vidéo est accessible.'
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ Erreur dans handlePlay:', error);
+        
+        const errorResponse = {
+            content: '❌ Une erreur est survenue lors de la lecture de la musique.'
+        };
+        
+        if (interaction.deferred) {
+            await interaction.editReply(errorResponse);
+        } else {
+            await interaction.reply({ ...errorResponse, flags: MessageFlags.Ephemeral });
+        }
+    }
+}
+
+// Jouer une musique
+async function playSong(queue, interaction) {
+    const song = queue.getNextSong();
+    
+    if (!song) {
+        // Plus de musiques dans la queue
+        queue.isPlaying = false;
+        queue.currentSong = null;
+        
+        // Quitter le vocal après 2 minutes d'inactivité
+        setTimeout(() => {
+            if (!queue.isPlaying && queue.songs.length === 0) {
+                queue.destroy();
+                musicQueues.delete(queue.guildId);
+                console.log('🔇 Bot déconnecté du vocal par inactivité');
+            }
+        }, 120000); // 2 minutes
+        
+        return;
+    }
+
+    queue.currentSong = song;
+    queue.isPlaying = true;
+
+    try {
+        // Créer un stream audio depuis YouTube
+        const stream = await play.stream(song.url);
+        const resource = createAudioResource(stream.stream, {
+            inputType: stream.type
+        });
+
+        // Jouer la musique
+        queue.player.play(resource);
+
+        console.log(`🎵 Lecture: ${song.title}`);
+
+    } catch (error) {
+        console.error('❌ Erreur lors de la lecture de la musique:', error);
+        queue.isPlaying = false;
+        // Passer à la musique suivante
+        playNextSong(queue, interaction);
+    }
+}
+
+// Jouer la musique suivante
+async function playNextSong(queue, interaction) {
+    if (queue.songs.length > 0) {
+        await playSong(queue, interaction);
+    } else {
+        queue.isPlaying = false;
+        queue.currentSong = null;
+        
+        // Quitter le vocal après 2 minutes d'inactivité
+        setTimeout(() => {
+            if (!queue.isPlaying && queue.songs.length === 0) {
+                queue.destroy();
+                musicQueues.delete(queue.guildId);
+                console.log('🔇 Bot déconnecté du vocal par inactivité');
+            }
+        }, 120000);
+    }
+}
+
+// Gestionnaire de la commande /skip
+async function handleSkip(interaction) {
+    try {
+        const queue = musicQueues.get(interaction.guildId);
+
+        if (!queue || !queue.isPlaying) {
+            await interaction.reply({
+                content: '❌ Aucune musique n\'est en cours de lecture !',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Vérifier que l'utilisateur est dans le même salon vocal
+        const voiceChannel = interaction.member.voice.channel;
+        if (!voiceChannel || voiceChannel.id !== queue.connection.joinConfig.channelId) {
+            await interaction.reply({
+                content: '❌ Vous devez être dans le même salon vocal que le bot !',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Arrêter la musique actuelle (déclenchera automatiquement la suivante)
+        queue.player.stop();
+
+        await interaction.reply({
+            content: '⏭️ Musique passée !',
+            flags: MessageFlags.Ephemeral
+        });
+
+    } catch (error) {
+        console.error('❌ Erreur dans handleSkip:', error);
+        await interaction.reply({
+            content: '❌ Une erreur est survenue.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
+// Gestionnaire de la commande /stop
+async function handleStop(interaction) {
+    try {
+        const queue = musicQueues.get(interaction.guildId);
+
+        if (!queue) {
+            await interaction.reply({
+                content: '❌ Aucune musique n\'est en cours de lecture !',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Vérifier que l'utilisateur est dans le même salon vocal
+        const voiceChannel = interaction.member.voice.channel;
+        if (!voiceChannel || voiceChannel.id !== queue.connection.joinConfig.channelId) {
+            await interaction.reply({
+                content: '❌ Vous devez être dans le même salon vocal que le bot !',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Détruire la queue et quitter le vocal
+        queue.destroy();
+        musicQueues.delete(interaction.guildId);
+
+        await interaction.reply({
+            content: '⏹️ Lecture arrêtée et file d\'attente vidée. À bientôt ! 👋',
+            flags: MessageFlags.Ephemeral
+        });
+
+    } catch (error) {
+        console.error('❌ Erreur dans handleStop:', error);
+        await interaction.reply({
+            content: '❌ Une erreur est survenue.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
+// Gestionnaire de la commande /queue
+async function handleQueue(interaction) {
+    try {
+        const queue = musicQueues.get(interaction.guildId);
+
+        if (!queue || (!queue.currentSong && queue.songs.length === 0)) {
+            await interaction.reply({
+                content: '❌ La file d\'attente est vide !',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        let description = '';
+
+        // Musique en cours
+        if (queue.currentSong) {
+            description += `**🎵 En cours:**\n`;
+            description += `[${queue.currentSong.title}](${queue.currentSong.url})\n`;
+            description += `*Durée: ${queue.currentSong.duration} | Demandé par: ${queue.currentSong.requestedBy.username}*\n\n`;
+        }
+
+        // File d'attente
+        if (queue.songs.length > 0) {
+            description += `**📋 File d'attente (${queue.songs.length} musique(s)):**\n\n`;
+            
+            queue.songs.slice(0, 10).forEach((song, index) => {
+                description += `**${index + 1}.** [${song.title}](${song.url})\n`;
+                description += `*Durée: ${song.duration} | Demandé par: ${song.requestedBy.username}*\n\n`;
+            });
+
+            if (queue.songs.length > 10) {
+                description += `*... et ${queue.songs.length - 10} autre(s) musique(s)*`;
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('📜 File d\'attente musicale')
+            .setDescription(description)
+            .setFooter({ text: 'Utilisez /play pour ajouter une musique' })
+            .setTimestamp();
+
+        await interaction.reply({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('❌ Erreur dans handleQueue:', error);
+        await interaction.reply({
+            content: '❌ Une erreur est survenue.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
+// Fonction utilitaire pour formater la durée
+function formatDuration(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
 // Gestion des erreurs non capturées
