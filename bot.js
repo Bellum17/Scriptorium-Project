@@ -4,8 +4,15 @@ process.removeAllListeners('warning');
 // Chargement des variables d'environnement
 require('dotenv').config();
 
-// Charger et initialiser libsodium AVANT Discord.js
-const sodium = require('libsodium-wrappers');
+// Charger sodium (essayer sodium-native d'abord, sinon libsodium-wrappers)
+let sodium;
+try {
+    sodium = require('sodium-native');
+    console.log('✅ Utilisation de sodium-native');
+} catch {
+    sodium = require('libsodium-wrappers');
+    console.log('✅ Utilisation de libsodium-wrappers');
+}
 
 // Import de Discord.js et axios pour les requêtes HTTP
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
@@ -2378,9 +2385,16 @@ async function connectWithRetry(maxRetries = 5, delay = 5000) {
 (async () => {
     try {
         console.log('🔐 Initialisation de la bibliothèque de chiffrement...');
-        await sodium.ready;
-        console.log('✅ Bibliothèque de chiffrement prête (libsodium)');
-        console.log('🔧 Modes de chiffrement disponibles: aead_aes256_gcm_rtpsize, aead_xchacha20poly1305_rtpsize');
+        
+        // sodium-native n'a pas besoin de .ready, libsodium-wrappers oui
+        if (sodium.ready) {
+            await sodium.ready;
+            console.log('✅ libsodium-wrappers initialisé');
+        } else {
+            console.log('✅ sodium-native prêt (pas besoin d\'initialisation async)');
+        }
+        
+        console.log('🔧 Modes de chiffrement disponibles pour @discordjs/voice');
         
         // Connexion du bot avec retry
         await connectWithRetry();

@@ -33,9 +33,10 @@
     "pg": "^8.11.3",
     "play-dl": "^1.9.7",
     "puppeteer": "^24.30.0",
+    "sodium-native": "^4.3.3",
     "youtube-dl-exec": "^2.4.14",
-    "ytdl-core": "^4.11.5",
-    "youtube-ext": "^1.1.16"
+    "youtube-ext": "^1.1.16",
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
