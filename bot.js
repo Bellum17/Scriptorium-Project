@@ -8,7 +8,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState } = require('@discordjs/voice');
 const play = require('play-dl');
-const ytdl = require('ytdl-core');
+const ytdl = require('@distube/ytdl-core');
 const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
@@ -1659,6 +1659,34 @@ async function handleEmojiImage(interaction) {
 // SYSTÈME DE MUSIQUE
 // ========================================
 
+// Fonction pour nettoyer et normaliser les URLs YouTube
+function cleanYouTubeURL(url) {
+    try {
+        // Supprimer les paramètres inutiles (playlist, start_radio, etc.)
+        const urlObj = new URL(url);
+        
+        // Gérer les liens courts youtu.be
+        if (urlObj.hostname === 'youtu.be' || urlObj.hostname === 'www.youtu.be') {
+            const videoId = urlObj.pathname.slice(1); // Enlever le premier "/"
+            return `https://www.youtube.com/watch?v=${videoId}`;
+        }
+        
+        // Gérer les liens youtube.com/watch
+        if (urlObj.hostname === 'youtube.com' || urlObj.hostname === 'www.youtube.com') {
+            const videoId = urlObj.searchParams.get('v');
+            if (videoId) {
+                return `https://www.youtube.com/watch?v=${videoId}`;
+            }
+        }
+        
+        // Si on ne peut pas parser, retourner l'URL originale
+        return url;
+    } catch (error) {
+        // Si l'URL n'est pas valide, retourner telle quelle
+        return url;
+    }
+}
+
 // Gestionnaire de la commande /play
 async function handlePlay(interaction) {
     try {
@@ -1684,7 +1712,10 @@ async function handlePlay(interaction) {
 
         await interaction.deferReply();
 
-        const videoUrl = interaction.options.getString('video');
+        let videoUrl = interaction.options.getString('video');
+
+        // Nettoyer l'URL (supporter les liens de partage, playlists, etc.)
+        videoUrl = cleanYouTubeURL(videoUrl);
 
         // Valider l'URL YouTube avec ytdl-core
         if (!ytdl.validateURL(videoUrl)) {
@@ -1696,7 +1727,14 @@ async function handlePlay(interaction) {
 
         try {
             // Récupérer les informations de la vidéo avec ytdl-core
-            const videoInfo = await ytdl.getInfo(videoUrl);
+            const videoInfo = await ytdl.getInfo(videoUrl, {
+                requestOptions: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept-Language': 'en-US,en;q=0.9'
+                    }
+                }
+            });
 
             const song = {
                 title: videoInfo.videoDetails.title,
@@ -1829,7 +1867,13 @@ async function playSong(queue, interaction) {
         const stream = ytdl(song.url, {
             filter: 'audioonly',
             quality: 'highestaudio',
-            highWaterMark: 1 << 25 // 32MB buffer
+            highWaterMark: 1 << 25, // 32MB buffer
+            requestOptions: {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language': 'en-US,en;q=0.9'
+                }
+            }
         });
 
         const resource = createAudioResource(stream, {
