@@ -149,6 +149,34 @@ class YouTubeCookieManager {
             return false;
         }
     }
+    
+    // Créer un fichier de cookies au format Netscape pour yt-dlp
+    createNetscapeCookieFile() {
+        if (!this.cookies || this.cookies.length === 0) return null;
+        
+        const cookieFilePath = '/tmp/youtube_cookies.txt';
+        const netscapeCookies = ['# Netscape HTTP Cookie File'];
+        
+        for (const cookie of this.cookies) {
+            // Format: domain	flag	path	secure	expiration	name	value
+            const domain = cookie.domain || '.youtube.com';
+            const flag = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+            const path = cookie.path || '/';
+            const secure = cookie.secure ? 'TRUE' : 'FALSE';
+            const expiration = cookie.expires || Math.floor(Date.now() / 1000) + 31536000; // 1 an par défaut
+            
+            netscapeCookies.push(`${domain}\t${flag}\t${path}\t${secure}\t${expiration}\t${cookie.name}\t${cookie.value}`);
+        }
+        
+        try {
+            fs.writeFileSync(cookieFilePath, netscapeCookies.join('\n'));
+            console.log('✅ Fichier cookies Netscape créé pour yt-dlp');
+            return cookieFilePath;
+        } catch (error) {
+            console.error('❌ Erreur création fichier cookies:', error.message);
+            return null;
+        }
+    }
 }
 
 // Initialiser le gestionnaire de cookies
@@ -1833,54 +1861,65 @@ async function handlePlay(interaction) {
         }
 
         let song;
+        
+        // PRIORITÉ 1: yt-dlp avec cookies (le plus robuste contre YouTube)
         try {
-            // Méthode 1: Essayer play-dl d'abord
-            const videoInfo = await play.video_info(videoUrl);
-            const video = videoInfo.video_details;
-
+            console.log('🎯 Essai avec yt-dlp + cookies...');
+            
+            const ytdlpOptions = {
+                dumpSingleJson: true,
+                noCheckCertificates: true,
+                noWarnings: true,
+                preferFreeFormats: true,
+                addHeader: [
+                    'referer:youtube.com',
+                    'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ]
+            };
+            
+            // Ajouter les cookies
+            const cookieFile = cookieManager.createNetscapeCookieFile();
+            if (cookieFile) {
+                ytdlpOptions.cookies = cookieFile;
+                console.log('🍪 Cookies YouTube utilisés');
+            }
+            
+            const info = await youtubedl(videoUrl, ytdlpOptions);
+            
             song = {
-                title: video.title,
-                url: videoUrl, // Utiliser l'URL originale, pas video.url
-                duration: formatDuration(video.durationInSec),
-                thumbnail: video.thumbnails[0]?.url || null,
+                title: info.title,
+                url: videoUrl,
+                duration: formatDuration(parseInt(info.duration)),
+                thumbnail: info.thumbnail,
                 requestedBy: interaction.user,
                 useYtdl: false,
-                useYtDlp: false
+                useYtDlp: true,
+                ytdlpInfo: info
             };
-            console.log('✅ Métadonnées récupérées avec play-dl');
-            console.log('🔗 URL stockée:', videoUrl);
-        } catch (playDlError) {
-            console.error('❌ play-dl a échoué:', playDlError.message);
+            console.log('✅ Métadonnées récupérées avec yt-dlp');
+        } catch (ytdlpError) {
+            console.error('❌ yt-dlp a échoué:', ytdlpError.message);
             
-            // Méthode 2: Fallback vers youtube-dl-exec (yt-dlp)
+            // PRIORITÉ 2: Fallback vers play-dl (rapide mais sans cookies)
             try {
-                console.log('🔄 Essai avec yt-dlp...');
-                const info = await youtubedl(videoUrl, {
-                    dumpSingleJson: true,
-                    noCheckCertificates: true,
-                    noWarnings: true,
-                    preferFreeFormats: true,
-                    addHeader: [
-                        'referer:youtube.com',
-                        'user-agent:Mozilla/5.0'
-                    ]
-                });
-                
+                console.log('🔄 Essai avec play-dl...');
+                const videoInfo = await play.video_info(videoUrl);
+                const video = videoInfo.video_details;
+
                 song = {
-                    title: info.title,
+                    title: video.title,
                     url: videoUrl,
-                    duration: formatDuration(parseInt(info.duration)),
-                    thumbnail: info.thumbnail,
+                    duration: formatDuration(video.durationInSec),
+                    thumbnail: video.thumbnails[0]?.url || null,
                     requestedBy: interaction.user,
                     useYtdl: false,
-                    useYtDlp: true,
-                    ytdlpInfo: info
+                    useYtDlp: false
                 };
-                console.log('✅ Métadonnées récupérées avec yt-dlp');
-            } catch (ytdlpError) {
-                console.error('❌ yt-dlp a échoué:', ytdlpError.message);
+                console.log('✅ Métadonnées récupérées avec play-dl');
+            } catch (playDlError) {
+                console.error('❌ play-dl a échoué:', playDlError.message);
                 
-                // Méthode 3: Dernier essai avec ytdl-core + cookies
+                // PRIORITÉ 3: Dernier essai avec ytdl-core (rarement fonctionne)
                 try {
                     console.log('🔄 Dernier essai avec ytdl-core...');
                     const info = await ytdl.getInfo(videoUrl, {
@@ -1902,7 +1941,7 @@ async function handlePlay(interaction) {
                 } catch (ytdlError) {
                     console.error('❌ Toutes les méthodes ont échoué');
                     await interaction.editReply({
-                        content: `❌ Impossible de récupérer la vidéo YouTube.\n\n**play-dl:** ${playDlError.message}\n**yt-dlp:** ${ytdlpError.message}\n**ytdl-core:** ${ytdlError.message}\n\n💡 Essayez une autre vidéo ou réessayez dans quelques minutes.`
+                        content: `❌ Impossible de récupérer la vidéo YouTube.\n\n**yt-dlp:** ${ytdlpError.message}\n**play-dl:** ${playDlError.message}\n**ytdl-core:** ${ytdlError.message}\n\n💡 Vérifiez que vos cookies YouTube sont à jour:\n\`node extract-youtube-cookies.js\``
                     });
                     return;
                 }
