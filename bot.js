@@ -125,7 +125,10 @@ class YouTubeCookieManager {
     }
     
     async validate() {
-        if (this.cookies.length === 0) return false;
+        if (this.cookies.length === 0) {
+            console.log('⚠️ Aucun cookie à valider (mode sans cookies)');
+            return false;
+        }
         
         try {
             const testUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -136,7 +139,8 @@ class YouTubeCookieManager {
             this.isValid = true;
             return true;
         } catch (error) {
-            console.error('❌ Cookies YouTube invalides ou expirés:', error.message);
+            console.log('⚠️ Validation cookies échouée (pas critique):', error.message);
+            console.log('💡 Le bot utilisera play-dl en priorité');
             this.isValid = false;
             return false;
         }
@@ -199,10 +203,14 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.log(`✅ Bot connecté en tant que ${readyClient.user.tag}`);
     console.log(`🤖 Bot actif sur ${readyClient.guilds.cache.size} serveur(s)`);
     
-    // Valider les cookies YouTube si présents
+    // Valider les cookies YouTube si présents (non bloquant)
     if (cookieManager.cookies.length > 0) {
         console.log('🍪 Validation des cookies YouTube...');
-        await cookieManager.validate();
+        cookieManager.validate().catch(err => {
+            console.log('⚠️ Validation en arrière-plan échouée');
+        });
+    } else {
+        console.log('💡 Bot en mode sans cookies (play-dl uniquement)');
     }
     
     // Initialiser la base de données
@@ -1822,43 +1830,43 @@ async function handlePlay(interaction) {
 
         let song;
         try {
-            // Essayer ytdl-core d'abord avec cookies
-            const info = await ytdl.getInfo(videoUrl, {
-                requestOptions: {
-                    headers: cookieManager.getHeaders()
-                }
-            });
-            
-            song = {
-                title: info.videoDetails.title,
-                url: info.videoDetails.video_url,
-                duration: formatDuration(parseInt(info.videoDetails.lengthSeconds)),
-                thumbnail: info.videoDetails.thumbnails[0]?.url || null,
-                requestedBy: interaction.user,
-                useYtdl: true
-            };
-            console.log('✅ Métadonnées récupérées avec ytdl-core');
-        } catch (ytdlError) {
-            console.error('❌ ytdl-core a échoué, essai avec play-dl:', ytdlError.message);
-            
-            // Fallback vers play-dl
-            try {
-                const videoInfo = await play.video_info(videoUrl);
-                const video = videoInfo.video_details;
+            // INVERSER: Essayer play-dl d'abord (plus stable actuellement)
+            const videoInfo = await play.video_info(videoUrl);
+            const video = videoInfo.video_details;
 
+            song = {
+                title: video.title,
+                url: video.url,
+                duration: formatDuration(video.durationInSec),
+                thumbnail: video.thumbnails[0].url,
+                requestedBy: interaction.user,
+                useYtdl: false
+            };
+            console.log('✅ Métadonnées récupérées avec play-dl');
+        } catch (playDlError) {
+            console.error('❌ play-dl a échoué, essai avec ytdl-core + cookies:', playDlError.message);
+            
+            // Fallback vers ytdl-core avec cookies
+            try {
+                const info = await ytdl.getInfo(videoUrl, {
+                    requestOptions: {
+                        headers: cookieManager.getHeaders()
+                    }
+                });
+                
                 song = {
-                    title: video.title,
-                    url: video.url,
-                    duration: formatDuration(video.durationInSec),
-                    thumbnail: video.thumbnails[0].url,
+                    title: info.videoDetails.title,
+                    url: info.videoDetails.video_url,
+                    duration: formatDuration(parseInt(info.videoDetails.lengthSeconds)),
+                    thumbnail: info.videoDetails.thumbnails[0]?.url || null,
                     requestedBy: interaction.user,
-                    useYtdl: false
+                    useYtdl: true
                 };
-                console.log('✅ Métadonnées récupérées avec play-dl');
-            } catch (playDlError) {
-                console.error('❌ play-dl a aussi échoué:', playDlError.message);
+                console.log('✅ Métadonnées récupérées avec ytdl-core (fallback)');
+            } catch (ytdlError) {
+                console.error('❌ ytdl-core a aussi échoué:', ytdlError.message);
                 await interaction.editReply({
-                    content: `❌ Impossible de récupérer la vidéo YouTube.\n\n**Erreur 1 (ytdl-core):** ${ytdlError.message}\n**Erreur 2 (play-dl):** ${playDlError.message}\n\n💡 YouTube bloque temporairement les requêtes. Réessayez dans 1-2 minutes.`
+                    content: `❌ Impossible de récupérer la vidéo YouTube.\n\n**Erreur 1 (play-dl):** ${playDlError.message}\n**Erreur 2 (ytdl-core):** ${ytdlError.message}\n\n💡 YouTube bloque temporairement les requêtes. Réessayez dans 1-2 minutes.`
                 });
                 return;
             }

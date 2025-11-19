@@ -33,7 +33,8 @@
     "pg": "^8.11.3",
     "play-dl": "^1.9.7",
     "puppeteer": "^24.30.0",
-    "ytdl-core": "^4.11.5"
+    "ytdl-core": "^4.11.5",
+    "youtube-ext": "^1.1.16"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
