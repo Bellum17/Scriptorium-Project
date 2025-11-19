@@ -8,6 +8,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState } = require('@discordjs/voice');
 const play = require('play-dl');
+const ytdl = require('ytdl-core');
 const axios = require('axios');
 const express = require('express');
 const DatabaseManager = require('./database');
@@ -1716,26 +1717,53 @@ async function handlePlay(interaction) {
         // Nettoyer l'URL (supporter les liens de partage, playlists, etc.)
         videoUrl = cleanYouTubeURL(videoUrl);
 
-        // Valider l'URL YouTube avec play-dl
-        if (!play.yt_validate(videoUrl)) {
+        // Valider l'URL YouTube
+        if (!play.yt_validate(videoUrl) && !ytdl.validateURL(videoUrl)) {
             await interaction.editReply({
                 content: '❌ Lien YouTube invalide ! Veuillez fournir un lien YouTube valide.'
             });
             return;
         }
 
+        let song;
         try {
-            // Récupérer les informations de la vidéo avec play-dl
+            // Essayer play-dl d'abord
             const videoInfo = await play.video_info(videoUrl);
             const video = videoInfo.video_details;
 
-            const song = {
+            song = {
                 title: video.title,
                 url: video.url,
                 duration: formatDuration(video.durationInSec),
                 thumbnail: video.thumbnails[0].url,
-                requestedBy: interaction.user
+                requestedBy: interaction.user,
+                useYtdl: false
             };
+        } catch (playDlError) {
+            console.error('❌ play-dl a échoué, essai avec ytdl-core:', playDlError.message);
+            
+            // Fallback vers ytdl-core
+            try {
+                const info = await ytdl.getInfo(videoUrl);
+                
+                song = {
+                    title: info.videoDetails.title,
+                    url: info.videoDetails.video_url,
+                    duration: formatDuration(parseInt(info.videoDetails.lengthSeconds)),
+                    thumbnail: info.videoDetails.thumbnails[0]?.url || null,
+                    requestedBy: interaction.user,
+                    useYtdl: true
+                };
+            } catch (ytdlError) {
+                console.error('❌ ytdl-core a aussi échoué:', ytdlError);
+                await interaction.editReply({
+                    content: `❌ Erreur lors de la récupération de la vidéo: ${ytdlError.message}\n\nYouTube bloque peut-être les requêtes automatisées. Réessayez dans quelques instants.`
+                });
+                return;
+            }
+        }
+
+        try {
 
             // Obtenir ou créer la queue pour ce serveur
             let queue = musicQueues.get(interaction.guildId);
@@ -1856,13 +1884,32 @@ async function playSong(queue, interaction) {
     queue.isPlaying = true;
 
     try {
-        // Créer un stream audio depuis YouTube avec play-dl
-        const stream = await play.stream(song.url);
+        let resource;
         
-        const resource = createAudioResource(stream.stream, {
-            inputType: stream.type,
-            inlineVolume: true
-        });
+        if (song.useYtdl) {
+            // Utiliser ytdl-core
+            console.log('🎵 Streaming avec ytdl-core...');
+            const stream = ytdl(song.url, {
+                filter: 'audioonly',
+                quality: 'highestaudio',
+                highWaterMark: 1 << 25, // 32MB buffer
+                dlChunkSize: 0 // Désactiver le chunking
+            });
+            
+            resource = createAudioResource(stream, {
+                inputType: StreamType.Arbitrary,
+                inlineVolume: true
+            });
+        } else {
+            // Utiliser play-dl
+            console.log('🎵 Streaming avec play-dl...');
+            const stream = await play.stream(song.url);
+            
+            resource = createAudioResource(stream.stream, {
+                inputType: stream.type,
+                inlineVolume: true
+            });
+        }
 
         // Ajuster le volume (optionnel)
         if (resource.volume) {
