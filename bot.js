@@ -4,6 +4,9 @@ process.removeAllListeners('warning');
 // Chargement des variables d'environnement
 require('dotenv').config();
 
+// Charger et initialiser libsodium AVANT Discord.js
+const sodium = require('libsodium-wrappers');
+
 // Import de Discord.js et axios pour les requêtes HTTP
 const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType, entersState } = require('@discordjs/voice');
@@ -1837,14 +1840,15 @@ async function handlePlay(interaction) {
 
             song = {
                 title: video.title,
-                url: video.url,
+                url: videoUrl, // Utiliser l'URL originale, pas video.url
                 duration: formatDuration(video.durationInSec),
-                thumbnail: video.thumbnails[0].url,
+                thumbnail: video.thumbnails[0]?.url || null,
                 requestedBy: interaction.user,
                 useYtdl: false,
                 useYtDlp: false
             };
             console.log('✅ Métadonnées récupérées avec play-dl');
+            console.log('🔗 URL stockée:', videoUrl);
         } catch (playDlError) {
             console.error('❌ play-dl a échoué:', playDlError.message);
             
@@ -2088,6 +2092,12 @@ async function playSong(queue, interaction) {
         } else {
             // Utiliser play-dl
             console.log('🎵 Streaming avec play-dl...');
+            console.log('🔍 URL:', song.url);
+            
+            if (!song.url || song.url === 'undefined') {
+                throw new Error('URL de la vidéo invalide');
+            }
+            
             const stream = await play.stream(song.url);
             
             resource = createAudioResource(stream.stream, {
@@ -2325,8 +2335,21 @@ async function connectWithRetry(maxRetries = 5, delay = 5000) {
     }
 }
 
-// Connexion du bot avec retry
-connectWithRetry();
+// Initialisation et connexion du bot
+(async () => {
+    try {
+        console.log('🔐 Initialisation de la bibliothèque de chiffrement...');
+        await sodium.ready;
+        console.log('✅ Bibliothèque de chiffrement prête (libsodium)');
+        console.log('🔧 Modes de chiffrement disponibles: aead_aes256_gcm_rtpsize, aead_xchacha20poly1305_rtpsize');
+        
+        // Connexion du bot avec retry
+        await connectWithRetry();
+    } catch (error) {
+        console.error('❌ Erreur lors de l\'initialisation:', error);
+        process.exit(1);
+    }
+})();
 
 // Gestion de l'arrêt propre du bot
 process.on('SIGINT', () => {
