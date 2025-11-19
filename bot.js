@@ -95,12 +95,22 @@ class MusicQueue {
     }
 
     destroy() {
-        if (this.connection) {
-            this.connection.destroy();
+        try {
+            if (this.connection && this.connection.state.status !== 'destroyed') {
+                this.connection.destroy();
+            }
+        } catch (error) {
+            console.log('⚠️ Erreur lors de la destruction de la connexion:', error.message);
         }
-        if (this.player) {
-            this.player.stop();
+        
+        try {
+            if (this.player) {
+                this.player.stop(true);
+            }
+        } catch (error) {
+            console.log('⚠️ Erreur lors de l\'arrêt du player:', error.message);
         }
+        
         this.clear();
     }
 }
@@ -1727,37 +1737,46 @@ async function handlePlay(interaction) {
 
         let song;
         try {
-            // Essayer play-dl d'abord
-            const videoInfo = await play.video_info(videoUrl);
-            const video = videoInfo.video_details;
-
-            song = {
-                title: video.title,
-                url: video.url,
-                duration: formatDuration(video.durationInSec),
-                thumbnail: video.thumbnails[0].url,
-                requestedBy: interaction.user,
-                useYtdl: false
-            };
-        } catch (playDlError) {
-            console.error('❌ play-dl a échoué, essai avec ytdl-core:', playDlError.message);
+            // Essayer ytdl-core d'abord avec options avancées
+            const info = await ytdl.getInfo(videoUrl, {
+                requestOptions: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
+                    }
+                }
+            });
             
-            // Fallback vers ytdl-core
+            song = {
+                title: info.videoDetails.title,
+                url: info.videoDetails.video_url,
+                duration: formatDuration(parseInt(info.videoDetails.lengthSeconds)),
+                thumbnail: info.videoDetails.thumbnails[0]?.url || null,
+                requestedBy: interaction.user,
+                useYtdl: true
+            };
+            console.log('✅ Métadonnées récupérées avec ytdl-core');
+        } catch (ytdlError) {
+            console.error('❌ ytdl-core a échoué, essai avec play-dl:', ytdlError.message);
+            
+            // Fallback vers play-dl
             try {
-                const info = await ytdl.getInfo(videoUrl);
-                
+                const videoInfo = await play.video_info(videoUrl);
+                const video = videoInfo.video_details;
+
                 song = {
-                    title: info.videoDetails.title,
-                    url: info.videoDetails.video_url,
-                    duration: formatDuration(parseInt(info.videoDetails.lengthSeconds)),
-                    thumbnail: info.videoDetails.thumbnails[0]?.url || null,
+                    title: video.title,
+                    url: video.url,
+                    duration: formatDuration(video.durationInSec),
+                    thumbnail: video.thumbnails[0].url,
                     requestedBy: interaction.user,
-                    useYtdl: true
+                    useYtdl: false
                 };
-            } catch (ytdlError) {
-                console.error('❌ ytdl-core a aussi échoué:', ytdlError);
+                console.log('✅ Métadonnées récupérées avec play-dl');
+            } catch (playDlError) {
+                console.error('❌ play-dl a aussi échoué:', playDlError.message);
                 await interaction.editReply({
-                    content: `❌ Erreur lors de la récupération de la vidéo: ${ytdlError.message}\n\nYouTube bloque peut-être les requêtes automatisées. Réessayez dans quelques instants.`
+                    content: `❌ Impossible de récupérer la vidéo YouTube.\n\n**Erreur 1 (ytdl-core):** ${ytdlError.message}\n**Erreur 2 (play-dl):** ${playDlError.message}\n\n💡 YouTube bloque temporairement les requêtes. Réessayez dans 1-2 minutes.`
                 });
                 return;
             }
@@ -1887,19 +1906,43 @@ async function playSong(queue, interaction) {
         let resource;
         
         if (song.useYtdl) {
-            // Utiliser ytdl-core
+            // Utiliser ytdl-core avec options avancées
             console.log('🎵 Streaming avec ytdl-core...');
-            const stream = ytdl(song.url, {
-                filter: 'audioonly',
-                quality: 'highestaudio',
-                highWaterMark: 1 << 25, // 32MB buffer
-                dlChunkSize: 0 // Désactiver le chunking
-            });
             
-            resource = createAudioResource(stream, {
-                inputType: StreamType.Arbitrary,
-                inlineVolume: true
-            });
+            try {
+                const stream = ytdl(song.url, {
+                    filter: 'audioonly',
+                    quality: 'highestaudio',
+                    highWaterMark: 1 << 25, // 32MB buffer
+                    dlChunkSize: 0, // Désactiver le chunking
+                    requestOptions: {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
+                        }
+                    }
+                });
+                
+                resource = createAudioResource(stream, {
+                    inputType: StreamType.Arbitrary,
+                    inlineVolume: true
+                });
+            } catch (ytdlStreamError) {
+                console.error('❌ ytdl-core streaming échoué, essai avec play-dl:', ytdlStreamError.message);
+                
+                // Fallback vers play-dl pour le streaming
+                try {
+                    const playStream = await play.stream(song.url);
+                    resource = createAudioResource(playStream.stream, {
+                        inputType: playStream.type,
+                        inlineVolume: true
+                    });
+                    console.log('✅ Streaming avec play-dl (fallback)');
+                } catch (playStreamError) {
+                    console.error('❌ play-dl streaming aussi échoué:', playStreamError.message);
+                    throw new Error('Impossible de streamer la vidéo');
+                }
+            }
         } else {
             // Utiliser play-dl
             console.log('🎵 Streaming avec play-dl...');
