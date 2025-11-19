@@ -4,14 +4,26 @@ process.removeAllListeners('warning');
 // Chargement des variables d'environnement
 require('dotenv').config();
 
-// Charger sodium (essayer sodium-native d'abord, sinon libsodium-wrappers)
-let sodium;
+// CRITIQUE: Charger sodium AVANT @discordjs/voice pour qu'il le détecte
+// Discord.js cherche sodium au moment de l'import, pas à l'exécution
 try {
-    sodium = require('sodium-native');
-    console.log('✅ Utilisation de sodium-native');
-} catch {
-    sodium = require('libsodium-wrappers');
-    console.log('✅ Utilisation de libsodium-wrappers');
+    // Essayer sodium-native d'abord (meilleur pour Linux/Railway)
+    const sodiumNative = require('sodium-native');
+    // Exposer dans le scope global pour @discordjs/voice
+    global.sodium = sodiumNative;
+    console.log('✅ sodium-native chargé et exposé globalement');
+} catch (err1) {
+    try {
+        // Fallback vers libsodium-wrappers
+        const sodiumWrappers = require('libsodium-wrappers');
+        global.sodium = sodiumWrappers;
+        console.log('✅ libsodium-wrappers chargé et exposé globalement');
+    } catch (err2) {
+        console.error('❌ Aucune bibliothèque sodium disponible!');
+        console.error('   sodium-native:', err1.message);
+        console.error('   libsodium-wrappers:', err2.message);
+        process.exit(1);
+    }
 }
 
 // Import de Discord.js et axios pour les requêtes HTTP
@@ -2386,15 +2398,16 @@ async function connectWithRetry(maxRetries = 5, delay = 5000) {
     try {
         console.log('🔐 Initialisation de la bibliothèque de chiffrement...');
         
-        // sodium-native n'a pas besoin de .ready, libsodium-wrappers oui
-        if (sodium.ready) {
-            await sodium.ready;
-            console.log('✅ libsodium-wrappers initialisé');
+        // libsodium-wrappers a besoin de .ready, sodium-native non
+        if (global.sodium && global.sodium.ready) {
+            await global.sodium.ready;
+            console.log('✅ libsodium-wrappers initialisé et prêt');
         } else {
-            console.log('✅ sodium-native prêt (pas besoin d\'initialisation async)');
+            console.log('✅ sodium-native prêt (synchrone)');
         }
         
-        console.log('🔧 Modes de chiffrement disponibles pour @discordjs/voice');
+        console.log('🔧 Encryption disponible pour @discordjs/voice');
+        console.log('💡 Modes supportés: aead_aes256_gcm, aead_xchacha20poly1305');
         
         // Connexion du bot avec retry
         await connectWithRetry();
