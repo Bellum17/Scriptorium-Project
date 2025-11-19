@@ -192,6 +192,39 @@ async function registerCommands(client) {
                     .setName('instructions')
                     .setDescription('Nouvelles instructions système pour l\'IA')
                     .setRequired(true)
+            ),
+        new SlashCommandBuilder()
+            .setName('emoji')
+            .setDescription('Gérer les emojis personnalisés du serveur')
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('add')
+                    .setDescription('Ajouter un emoji personnalisé au serveur')
+                    .addAttachmentOption(option =>
+                        option
+                            .setName('image')
+                            .setDescription('Image de l\'emoji (PNG, JPG, GIF - max 256KB)')
+                            .setRequired(true)
+                    )
+                    .addStringOption(option =>
+                        option
+                            .setName('nom')
+                            .setDescription('Nom de l\'emoji (2-32 caractères, lettres/chiffres/underscores)')
+                            .setRequired(true)
+                            .setMinLength(2)
+                            .setMaxLength(32)
+                    )
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('image')
+                    .setDescription('Obtenir l\'image d\'un emoji')
+                    .addStringOption(option =>
+                        option
+                            .setName('emoji')
+                            .setDescription('L\'emoji dont vous voulez l\'image (emoji Discord ou Unicode)')
+                            .setRequired(true)
+                    )
             )
     ];
 
@@ -264,6 +297,16 @@ async function handleCommand(interaction) {
             }
         } else if (interaction.commandName === 'instruction') {
             await handleSetInstructions(interaction);
+        } else if (interaction.commandName === 'emoji') {
+            const subcommand = interaction.options.getSubcommand();
+            switch (subcommand) {
+                case 'add':
+                    await handleAddEmoji(interaction);
+                    break;
+                case 'image':
+                    await handleEmojiImage(interaction);
+                    break;
+            }
         }
     } catch (error) {
         console.error('❌ Erreur lors de l\'exécution de la commande:', error);
@@ -1240,6 +1283,270 @@ async function getOrCreateWebhook(channel) {
     } catch (error) {
         console.error('❌ Erreur lors de la création du webhook:', error);
         return null;
+    }
+}
+
+// Gestionnaire pour ajouter un emoji personnalisé
+async function handleAddEmoji(interaction) {
+    try {
+        // Vérifier les permissions (besoin de MANAGE_GUILD_EXPRESSIONS)
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuildExpressions)) {
+            await interaction.reply({
+                content: '❌ Vous devez avoir la permission "Gérer les expressions" pour ajouter des emojis.',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Récupérer les options
+        const attachment = interaction.options.getAttachment('image');
+        const emojiName = interaction.options.getString('nom');
+
+        // Valider le nom de l'emoji (lettres, chiffres, underscores seulement)
+        const nameRegex = /^[a-zA-Z0-9_]+$/;
+        if (!nameRegex.test(emojiName)) {
+            await interaction.reply({
+                content: '❌ Le nom de l\'emoji ne peut contenir que des lettres, chiffres et underscores.',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Vérifier le type de fichier
+        const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
+        if (!validTypes.includes(attachment.contentType)) {
+            await interaction.reply({
+                content: '❌ L\'image doit être au format PNG, JPG ou GIF.',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Vérifier la taille du fichier (Discord limite à 256KB)
+        if (attachment.size > 256 * 1024) {
+            await interaction.reply({
+                content: '❌ L\'image doit faire moins de 256KB.',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // Différer la réponse car la création d'emoji peut prendre du temps
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        try {
+            // Créer l'emoji sur le serveur
+            const emoji = await interaction.guild.emojis.create({
+                attachment: attachment.url,
+                name: emojiName,
+                reason: `Emoji ajouté par ${interaction.user.tag}`
+            });
+
+            // Répondre avec succès
+            await interaction.editReply({
+                content: `✅ Emoji ${emoji} \`:${emoji.name}:\` ajouté avec succès !`
+            });
+
+            console.log(`✅ Emoji ${emoji.name} ajouté au serveur ${interaction.guild.name} par ${interaction.user.tag}`);
+
+        } catch (error) {
+            console.error('❌ Erreur lors de la création de l\'emoji:', error);
+            
+            let errorMessage = '❌ Erreur lors de l\'ajout de l\'emoji.';
+            
+            if (error.code === 30008) {
+                errorMessage = '❌ Le serveur a atteint le nombre maximum d\'emojis.';
+            } else if (error.code === 50035) {
+                errorMessage = '❌ Format d\'image invalide ou nom d\'emoji invalide.';
+            } else if (error.message.includes('Missing Permissions')) {
+                errorMessage = '❌ Le bot n\'a pas la permission "Gérer les expressions".';
+            }
+            
+            await interaction.editReply({ content: errorMessage });
+        }
+
+    } catch (error) {
+        console.error('❌ Erreur dans handleAddEmoji:', error);
+        
+        const errorResponse = {
+            content: '❌ Une erreur est survenue lors de l\'ajout de l\'emoji.',
+            flags: MessageFlags.Ephemeral
+        };
+        
+        if (interaction.deferred) {
+            await interaction.editReply(errorResponse);
+        } else {
+            await interaction.reply(errorResponse);
+        }
+    }
+}
+
+// Gestionnaire pour obtenir l'image d'un emoji
+async function handleEmojiImage(interaction) {
+    try {
+        const emojiInput = interaction.options.getString('emoji');
+
+        // Différer la réponse pour avoir le temps de traiter
+        await interaction.deferReply();
+
+        // Regex pour détecter un emoji personnalisé Discord : <:nom:id> ou <a:nom:id>
+        const customEmojiRegex = /<a?:(\w+):(\d+)>/;
+        const match = emojiInput.match(customEmojiRegex);
+
+        if (match) {
+            // C'est un emoji personnalisé Discord
+            const emojiName = match[1];
+            const emojiId = match[2];
+            const isAnimated = emojiInput.startsWith('<a:');
+            
+            // Construire l'URL de l'emoji
+            const extension = isAnimated ? 'gif' : 'png';
+            const emojiUrl = `https://cdn.discordapp.com/emojis/${emojiId}.${extension}`;
+
+            // Créer un embed avec l'image
+            const embed = new EmbedBuilder()
+                .setTitle(`🖼️ Image de l'emoji :${emojiName}:`)
+                .setDescription(`**Nom:** \`:${emojiName}:\`\n**ID:** \`${emojiId}\`\n**Type:** ${isAnimated ? 'Animé (GIF)' : 'Statique (PNG)'}`)
+                .setImage(emojiUrl)
+                .setColor(0x5865F2)
+                .setFooter({ text: `Demandé par ${interaction.user.tag}` })
+                .setTimestamp();
+
+            // Répondre avec l'embed
+            await interaction.editReply({
+                embeds: [embed],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setLabel('Ouvrir l\'image')
+                            .setURL(emojiUrl)
+                            .setStyle(ButtonStyle.Link)
+                    )
+                ]
+            });
+
+            console.log(`✅ Image de l'emoji ${emojiName} (${emojiId}) envoyée à ${interaction.user.tag}`);
+
+        } else {
+            // C'est peut-être un emoji Unicode
+            // On va essayer de le convertir en codepoint pour obtenir l'image depuis une API
+            
+            // Vérifier si c'est un caractère emoji valide
+            const emojiChar = emojiInput.trim();
+            
+            // Convertir en codepoints Unicode
+            const codePoints = [];
+            for (const char of emojiChar) {
+                codePoints.push(char.codePointAt(0).toString(16));
+            }
+            
+            if (codePoints.length === 0) {
+                await interaction.editReply({
+                    content: '❌ Emoji invalide. Veuillez fournir un emoji Discord (ex: <:nom:id>) ou un emoji Unicode (ex: 😀).'
+                });
+                return;
+            }
+
+            // Utiliser l'API Twemoji de Discord pour obtenir l'image
+            const codePointsString = codePoints.join('-');
+            const twemojiUrl = `https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/72x72/${codePointsString}.png`;
+
+            // Vérifier que l'image existe en faisant une requête HEAD
+            try {
+                const response = await axios.head(twemojiUrl);
+                
+                if (response.status === 200) {
+                    // L'image existe, créer un embed
+                    const embed = new EmbedBuilder()
+                        .setTitle(`🖼️ Image de l'emoji ${emojiChar}`)
+                        .setDescription(`**Emoji Unicode:** ${emojiChar}\n**Codepoint:** \`U+${codePoints.join(' U+').toUpperCase()}\``)
+                        .setImage(twemojiUrl)
+                        .setColor(0x5865F2)
+                        .setFooter({ text: `Demandé par ${interaction.user.tag}` })
+                        .setTimestamp();
+
+                    await interaction.editReply({
+                        embeds: [embed],
+                        components: [
+                            new ActionRowBuilder().addComponents(
+                                new ButtonBuilder()
+                                    .setLabel('Ouvrir l\'image')
+                                    .setURL(twemojiUrl)
+                                    .setStyle(ButtonStyle.Link)
+                            )
+                        ]
+                    });
+
+                    console.log(`✅ Image de l'emoji Unicode ${emojiChar} envoyée à ${interaction.user.tag}`);
+                } else {
+                    throw new Error('Image non trouvée');
+                }
+            } catch (error) {
+                // Si l'image n'existe pas, essayer une approche alternative
+                // Utiliser l'API EmojiAPI
+                const emojiApiUrl = `https://emojiapi.dev/api/v1/${encodeURIComponent(emojiChar)}`;
+                
+                try {
+                    const apiResponse = await axios.get(emojiApiUrl);
+                    
+                    if (apiResponse.data && apiResponse.data.images) {
+                        const imageUrl = apiResponse.data.images[0]?.url || twemojiUrl;
+                        
+                        const embed = new EmbedBuilder()
+                            .setTitle(`🖼️ Image de l'emoji ${emojiChar}`)
+                            .setDescription(`**Emoji Unicode:** ${emojiChar}\n**Nom:** ${apiResponse.data.name || 'Inconnu'}`)
+                            .setImage(imageUrl)
+                            .setColor(0x5865F2)
+                            .setFooter({ text: `Demandé par ${interaction.user.tag}` })
+                            .setTimestamp();
+
+                        await interaction.editReply({
+                            embeds: [embed],
+                            components: [
+                                new ActionRowBuilder().addComponents(
+                                    new ButtonBuilder()
+                                        .setLabel('Ouvrir l\'image')
+                                        .setURL(imageUrl)
+                                        .setStyle(ButtonStyle.Link)
+                                )
+                            ]
+                        });
+
+                        console.log(`✅ Image de l'emoji Unicode ${emojiChar} envoyée à ${interaction.user.tag}`);
+                    } else {
+                        throw new Error('API ne retourne pas de données');
+                    }
+                } catch (apiError) {
+                    // Dernier recours : utiliser l'URL Twemoji même si on n'a pas confirmé qu'elle existe
+                    const embed = new EmbedBuilder()
+                        .setTitle(`🖼️ Image de l'emoji ${emojiChar}`)
+                        .setDescription(`**Emoji Unicode:** ${emojiChar}\n**Codepoint:** \`U+${codePoints.join(' U+').toUpperCase()}\`\n\n⚠️ Image potentiellement indisponible`)
+                        .setImage(twemojiUrl)
+                        .setColor(0xFFA500)
+                        .setFooter({ text: `Demandé par ${interaction.user.tag}` })
+                        .setTimestamp();
+
+                    await interaction.editReply({
+                        embeds: [embed]
+                    });
+
+                    console.log(`⚠️ Image de l'emoji Unicode ${emojiChar} (non vérifiée) envoyée à ${interaction.user.tag}`);
+                }
+            }
+        }
+
+    } catch (error) {
+        console.error('❌ Erreur dans handleEmojiImage:', error);
+        
+        const errorResponse = {
+            content: '❌ Une erreur est survenue lors de la récupération de l\'image de l\'emoji.'
+        };
+        
+        if (interaction.deferred) {
+            await interaction.editReply(errorResponse);
+        } else {
+            await interaction.reply({ ...errorResponse, flags: MessageFlags.Ephemeral });
+        }
     }
 }
 
