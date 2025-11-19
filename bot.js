@@ -200,10 +200,10 @@ async function registerCommands(client) {
                 subcommand
                     .setName('add')
                     .setDescription('Ajouter un emoji personnalisé au serveur')
-                    .addAttachmentOption(option =>
+                    .addStringOption(option =>
                         option
-                            .setName('image')
-                            .setDescription('Image de l\'emoji (PNG, JPG, GIF - max 256KB)')
+                            .setName('emoji')
+                            .setDescription('Emoji à ajouter (Discord custom ou Unicode)')
                             .setRequired(true)
                     )
                     .addStringOption(option =>
@@ -1299,7 +1299,7 @@ async function handleAddEmoji(interaction) {
         }
 
         // Récupérer les options
-        const attachment = interaction.options.getAttachment('image');
+        const emojiInput = interaction.options.getString('emoji');
         const emojiName = interaction.options.getString('nom');
 
         // Valider le nom de l'emoji (lettres, chiffres, underscores seulement)
@@ -1312,32 +1312,67 @@ async function handleAddEmoji(interaction) {
             return;
         }
 
-        // Vérifier le type de fichier
-        const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
-        if (!validTypes.includes(attachment.contentType)) {
-            await interaction.reply({
-                content: '❌ L\'image doit être au format PNG, JPG ou GIF.',
-                flags: MessageFlags.Ephemeral
-            });
-            return;
-        }
-
-        // Vérifier la taille du fichier (Discord limite à 256KB)
-        if (attachment.size > 256 * 1024) {
-            await interaction.reply({
-                content: '❌ L\'image doit faire moins de 256KB.',
-                flags: MessageFlags.Ephemeral
-            });
-            return;
-        }
-
-        // Différer la réponse car la création d'emoji peut prendre du temps
+        // Différer la réponse car la récupération et création d'emoji peut prendre du temps
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         try {
-            // Créer l'emoji sur le serveur
+            let imageUrl = null;
+
+            // Détecter si c'est un emoji Discord custom
+            const discordEmojiRegex = /<a?:(\w+):(\d+)>/;
+            const discordMatch = emojiInput.match(discordEmojiRegex);
+
+            if (discordMatch) {
+                // Emoji Discord custom
+                const emojiId = discordMatch[2];
+                const isAnimated = emojiInput.startsWith('<a:');
+                const extension = isAnimated ? 'gif' : 'png';
+                imageUrl = `https://cdn.discordapp.com/emojis/${emojiId}.${extension}?quality=lossless`;
+                
+                console.log(`📥 Récupération de l'emoji Discord: ${imageUrl}`);
+
+            } else {
+                // Emoji Unicode - convertir en codepoints pour Twemoji
+                const codePoints = [];
+                for (let i = 0; i < emojiInput.length; i++) {
+                    const codePoint = emojiInput.codePointAt(i);
+                    if (codePoint) {
+                        codePoints.push(codePoint.toString(16));
+                        // Si c'est un caractère surrogate pair, sauter le suivant
+                        if (codePoint > 0xFFFF) i++;
+                    }
+                }
+
+                if (codePoints.length === 0) {
+                    await interaction.editReply({
+                        content: '❌ Emoji invalide. Veuillez fournir un emoji Discord custom (<:nom:id>) ou un emoji Unicode (😀).'
+                    });
+                    return;
+                }
+
+                // Construire l'URL Twemoji
+                const codePointString = codePoints.join('-');
+                imageUrl = `https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/${codePointString}.png`;
+                
+                console.log(`📥 Récupération de l'emoji Unicode: ${imageUrl}`);
+
+                // Vérifier que l'URL Twemoji existe
+                try {
+                    const response = await axios.head(imageUrl);
+                    if (response.status !== 200) {
+                        throw new Error('Image non trouvée');
+                    }
+                } catch (error) {
+                    await interaction.editReply({
+                        content: '❌ Impossible de récupérer l\'image de cet emoji Unicode. Essayez avec un emoji Discord custom.'
+                    });
+                    return;
+                }
+            }
+
+            // Créer l'emoji sur le serveur avec l'URL récupérée
             const emoji = await interaction.guild.emojis.create({
-                attachment: attachment.url,
+                attachment: imageUrl,
                 name: emojiName,
                 reason: `Emoji ajouté par ${interaction.user.tag}`
             });
@@ -1360,6 +1395,8 @@ async function handleAddEmoji(interaction) {
                 errorMessage = '❌ Format d\'image invalide ou nom d\'emoji invalide.';
             } else if (error.message.includes('Missing Permissions')) {
                 errorMessage = '❌ Le bot n\'a pas la permission "Gérer les expressions".';
+            } else if (error.message.includes('File cannot be larger than')) {
+                errorMessage = '❌ L\'image de l\'emoji est trop grande (max 256KB).';
             }
             
             await interaction.editReply({ content: errorMessage });
